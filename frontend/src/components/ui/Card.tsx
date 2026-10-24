@@ -21,7 +21,7 @@ type CardProps<T extends ElementType> = {
 } & Omit<ComponentPropsWithoutRef<T>, 'as' | 'className' | 'children'>
 
 const TONE: Record<CardTone, string> = {
-  default: 'border-[1.5px] border-solid border-ink bg-card shadow-[var(--card-shadow)]',
+  default: 'border-[1.5px] border-solid border-[var(--card-edge)] bg-card shadow-[var(--card-shadow)]',
   untrusted: 'border-[1.5px] border-dashed border-bad bg-bad-bg shadow-[var(--untrusted-shadow)]',
   good: 'border-[1.5px] border-solid border-good bg-card shadow-[3px_3px_0_#cde5d6]',
 }

@@ -4,7 +4,9 @@
  * Design tokens: the "paper" palette (Paper & cobalt) from
  * docs/design/Combined.dc.html, `palettes.paper`. Names follow the mockup.
  */
-:root {
+/* Paper is the default theme; data-theme="paper" restores it inside a dark page (Sig's bubble, the preview card). */
+:root,
+[data-theme='paper'] {
   /* Palette: the "paper" palette (Paper & cobalt), unchanged in the refined design. */
   --bg: #f6f4ef;
   --panel: #ece8df;
@@ -26,6 +28,13 @@
    * Every box is ink-outlined paper; untrusted content is dashed red.
    */
   --ink: var(--text);
+  /* Edges: the same ink on paper; the red team theme splits them (red panels, muted-red inputs). */
+  --card-edge: var(--ink);
+  --inner-edge: var(--ink);
+  --header-rule: var(--ink);
+  --nav-active: var(--accent);
+  --nav-active-text: var(--text);
+  --logo: var(--accent);
   --page-dot: #ded7c8;
   --page-ground: radial-gradient(var(--page-dot) 1px, transparent 1.3px) 0 0 / 18px 18px, var(--bg);
   --card-border: 1.5px solid var(--ink);
@@ -120,10 +129,83 @@
   }
 }
 
+/*
+ * Attack Lab "red team mode" (docs/design/refined/README.md): the only dark page.
+ * Set on the app shell for /attack only. Text contrast is checked in the UI-6 report.
+ */
+[data-theme='redteam'] {
+  --bg: #15161b;
+  --panel: #1f2129;
+  --card: #1f2129;
+  --text: #f3eee7;
+  --muted: #a9a3b0;
+  /* Light cobalt: the logo and focus rings, visible on dark. */
+  --accent: #9db2ff;
+  --accent-ink: #15161b;
+  --claim: #e7c9c6;
+  --good: #7fd3a6;
+  --good-ink: #15161b;
+  --bad: #ff8a80;
+  --bad-ink: #15161b;
+  --bad-bg: #3a1715;
+  --bad-border: #7a1d17;
+
+  --ink: #f3eee7;
+  --red: #ff5a4e;
+  --card-edge: var(--red);
+  /* Lighter than the mockup's #5A3A3A so inputs keep a 3:1 boundary on dark. */
+  --inner-edge: #9a6f6b;
+  --header-rule: var(--red);
+  --nav-active: var(--red);
+  --nav-active-text: var(--red);
+  --logo: var(--accent);
+  --page-dot: #3a1e1e;
+  --page-ground: radial-gradient(var(--page-dot) 1px, transparent 1.3px) 0 0 / 18px 18px, var(--bg);
+  --card-shadow: 4px 4px 0 #7a1d17;
+  --card-fold: linear-gradient(var(--card), var(--card));
+  --tab-bg: var(--red);
+  --tab-fg: #15161b;
+  --untrusted-border: 1.5px dashed var(--red);
+  --untrusted-shadow: 4px 4px 0 #7a1d17;
+  --inner-bg: #15161b;
+  --inner-shadow: none;
+  --rule-dashed: #5a3a3a;
+  --button-shadow: 5px 5px 0 #f3eee7;
+}
+
+[data-theme] {
+  color: var(--text);
+}
+
+/*
+ * Disabled controls on the dark page: fading a light fill to 50% leaves dark text at
+ * about 2.8:1, so show them as muted text on the dark panel instead (6.5:1).
+ */
+[data-theme='redteam'] :is(button, input, select, textarea):disabled {
+  opacity: 1;
+  background: var(--panel);
+  color: var(--muted);
+  border-color: var(--inner-edge);
+  box-shadow: none;
+}
+[data-theme='redteam'] [data-theme='paper'] :is(button, input, select, textarea):disabled {
+  opacity: 0.5;
+  background: revert-layer;
+  color: revert-layer;
+  border-color: revert-layer;
+}
+
+/* A paper card on the dark page: its folded corner shows the dark ground, its edge is light. */
+[data-theme='redteam'] [data-theme='paper'] {
+  --card-fold: linear-gradient(225deg, #15161b 0 12px, #d3cdc1 12px 13px, var(--card) 13px);
+  --card-edge: #f3eee7;
+  --card-shadow: none;
+}
+
 @layer components {
   /* Inputs, selects and textareas: inner-item ink outline with a soft shadow. */
   .ink-field {
-    border: var(--inner-border);
+    border: 1.5px solid var(--inner-edge);
     border-radius: 6px;
     background: var(--card);
     box-shadow: var(--inner-shadow);

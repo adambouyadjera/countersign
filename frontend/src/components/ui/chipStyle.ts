@@ -1,15 +1,17 @@
 import { cn } from '@/lib/cn'
 
 /** Classes for a chip: 1.5px ink outline, soft offset shadow. Shared by <Chip> and buttons that need a ref. */
-export type ChipTone = 'default' | 'untrusted' | 'good' | 'bad'
+export type ChipTone = 'default' | 'untrusted' | 'good' | 'bad' | 'armed'
 
 const TONE: Record<ChipTone, string> = {
-  default: 'border-[1.5px] border-solid border-ink bg-card text-fg shadow-[var(--inner-shadow)]',
+  default: 'border-[1.5px] border-solid border-[var(--inner-edge)] bg-card text-fg shadow-[var(--inner-shadow)]',
   // Status badges: dashed red for anything that came from untrusted text, verdigris for a clean result.
   untrusted: 'border-[1.5px] border-dashed border-bad bg-bad-bg text-bad',
   good: 'border-2 border-solid border-good bg-card text-good font-bold',
   // A failed result that is not about untrusted text (e.g. NOT BALANCED): solid, not dashed.
   bad: 'border-2 border-solid border-bad bg-bad-bg text-bad font-bold',
+  // The Attack Lab's red action chip: dark text on red.
+  armed: 'border-[1.5px] border-solid border-[var(--bg)] bg-[var(--red,var(--bad))] text-[var(--bg)] font-bold',
 }
 
 export function chipClass({

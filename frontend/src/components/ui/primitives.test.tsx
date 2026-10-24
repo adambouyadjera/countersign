@@ -15,7 +15,8 @@ describe('<Card>', () => {
     expect(c).toHaveAttribute('data-card', 'default')
     expect(c).toHaveAttribute('data-folded', 'true')
     expect(c.className).toContain('border-solid')
-    expect(c.className).toContain('border-ink')
+    // The edge token is ink on paper (and red in the Attack Lab's red team theme).
+    expect(c.className).toContain('border-[var(--card-edge)]')
     expect(c.className).toContain('shadow-[var(--card-shadow)]')
     expect(c.className).toContain('bg-[image:var(--card-fold)]')
   })
@@ -76,7 +77,7 @@ describe('<CardLabel>', () => {
 describe('<InkButton>', () => {
   it.each([
     ['primary', /border-solid border-ink bg-accent text-on-accent shadow-\[var\(--button-shadow\)\]/],
-    ['secondary', /border-solid border-ink bg-card text-fg shadow-\[var\(--inner-shadow\)\]/],
+    ['secondary', /border-solid border-\[var\(--inner-edge\)\] bg-card text-fg shadow-\[var\(--inner-shadow\)\]/],
     ['danger', /border-dashed border-bad bg-card text-bad/],
   ] as const)('%s variant', (variant, cls) => {
     render(<InkButton variant={variant}>Go</InkButton>)
@@ -130,14 +131,14 @@ describe('<Chip> and <InkRow>', () => {
         </Chip>
       </>,
     )
-    expect(screen.getByText('plain').className).toContain('border-ink')
+    expect(screen.getByText('plain').className).toContain('border-[var(--inner-edge)]')
     const b = screen.getByRole('button', { name: 'ask this' })
     expect(b.className).toContain('rounded-full')
     expect(b.className).toContain('focus-visible:outline-accent')
   })
 
   it.each([
-    ['default', /border-solid border-ink bg-inner/],
+    ['default', /border-solid border-\[var\(--inner-edge\)\] bg-inner/],
     ['untrusted', /border-dashed border-bad bg-bad-bg/],
     ['failed', /border-2 border-solid border-bad bg-bad-bg/],
     ['selected', /border-accent bg-bubble/],

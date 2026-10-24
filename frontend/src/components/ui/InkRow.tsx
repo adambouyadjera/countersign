@@ -1,7 +1,7 @@
 import type { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
-export type InkRowTone = 'default' | 'untrusted' | 'failed' | 'selected' | 'good-fill' | 'bad-fill'
+export type InkRowTone = 'default' | 'untrusted' | 'failed' | 'selected' | 'good-fill' | 'bad-fill' | 'armed'
 
 type InkRowProps<T extends ElementType> = {
   as?: T
@@ -10,6 +10,7 @@ type InkRowProps<T extends ElementType> = {
    * untrusted: dashed red on pale red. failed: 2px solid red on pale red (a failed check).
    * selected: cobalt outline and shadow (the picked inbox row).
    * good-fill / bad-fill: solid verdict tiles with a hard ink shadow (the console's outcome tiles).
+   * armed: the red glow of a selected option in the Attack Lab's red team theme.
    */
   tone?: InkRowTone
   className?: string
@@ -17,12 +18,13 @@ type InkRowProps<T extends ElementType> = {
 } & Omit<ComponentPropsWithoutRef<T>, 'as' | 'className' | 'children'>
 
 const TONE: Record<InkRowTone, string> = {
-  default: 'border-[1.5px] border-solid border-ink bg-inner shadow-[var(--inner-shadow)]',
+  default: 'border-[1.5px] border-solid border-[var(--inner-edge)] bg-inner shadow-[var(--inner-shadow)]',
   untrusted: 'border-[1.5px] border-dashed border-bad bg-bad-bg',
   failed: 'border-2 border-solid border-bad bg-bad-bg',
   selected: 'border-[1.5px] border-solid border-accent bg-bubble shadow-[2px_2px_0_var(--accent)]',
   'good-fill': 'border-[1.5px] border-solid border-ink bg-good text-on-good shadow-[var(--button-shadow)]',
   'bad-fill': 'border-[1.5px] border-solid border-ink bg-bad text-on-bad shadow-[var(--button-shadow)]',
+  armed: 'border-[1.5px] border-solid border-[var(--red,var(--bad))] bg-bad-bg shadow-[3px_3px_0_var(--bad-border)]',
 }
 
 /** An inner item inside a card. */
