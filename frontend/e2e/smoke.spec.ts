@@ -16,8 +16,8 @@ const viewports = [
 
 const PAGES = [
   { path: '/', heading: 'Sig · AP clerk' },
-  { path: '/runs/run-example-both/invoices/INV-003', heading: 'Case file' },
-  { path: '/attack', heading: 'Attack lab' },
+  { path: '/runs/run-example-both/invoices/INV-003', heading: 'INV-003 · Cedar Grove Catering · $640.00' },
+  { path: '/attack', heading: 'Write an invoice to fool Sig' },
   { path: '/books', heading: 'Books' },
   { path: '/proof', heading: 'Proof' },
   { path: '/audit', heading: 'Audit' },
@@ -48,7 +48,7 @@ for (const { path, heading } of PAGES) {
 }
 
 test('pages not built yet say so through Sig, with no sample content', async ({ page }) => {
-  for (const path of ['/attack', '/books', '/proof', '/audit']) {
+  for (const path of ['/books', '/proof', '/audit']) {
     await page.goto(path)
     await expect(page.getByText(/^Not built yet\./)).toBeVisible()
   }

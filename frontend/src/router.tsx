@@ -1,11 +1,11 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { AppShell } from '@/components/shell/AppShell'
+import { CaseFilePage } from '@/routes/CaseFilePage'
 import { ConsolePage } from '@/routes/ConsolePage'
+import { AttackLabPage } from '@/routes/AttackLabPage'
 import {
-  AttackLabPage,
   AuditPage,
   BooksPage,
-  CaseFilePage,
   NotFoundPage,
   ProofPage,
 } from '@/routes/placeholders'
