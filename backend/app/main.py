@@ -83,6 +83,9 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
             yield
         finally:
             await app.state.run_manager.close()
+            close_extractor = getattr(app.state.adapters.extractor, "aclose", None)
+            if close_extractor is not None:
+                await close_extractor()
             store.close()
 
     app = FastAPI(title="Countersign API", version="1.0.0", lifespan=lifespan)

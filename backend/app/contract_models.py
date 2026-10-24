@@ -10,7 +10,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, WithJsonSchema
+from pydantic import AfterValidator, AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, WithJsonSchema, model_validator
 
 
 _TIMESTAMP_PATTERN = (
@@ -640,12 +640,39 @@ class DocumentLoadedPayload(ContractModel):
     line_count: StrictInt
 
 
+class ExtractionAttempt(ContractModel):
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    outcome: Literal["success", "failed", "skipped"]
+    http_status: StrictInt = Field(default=None, ge=100, le=599, exclude_if=lambda value: value is None,
+                                  json_schema_extra=_omit_unset_default)
+    error_code: str = OptionalField()
+
+
+class ExtractionProvenance(ContractModel):
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    extracted_at: Timestamp
+    cached: StrictBool
+    document_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prompt_version: str = Field(min_length=1)
+    cache_key: str = OptionalField()
+    attempts: list[ExtractionAttempt] = OptionalField()
+
+
 class FieldsExtractedPayload(ContractModel):
     invoice_id: str
     extractor_model: str
     fields: list[ExtractedField]
     instruction_like_spans: list[SourceSpan]
     handles: list[Handle]
+    extraction_provenance: ExtractionProvenance = OptionalField()
+
+    @model_validator(mode="after")
+    def matching_extractor_identity(self):
+        if self.extraction_provenance is not None and self.extractor_model != self.extraction_provenance.model:
+            raise ValueError("Extractor model must match extraction provenance")
+        return self
 
 
 class PlanProposedPayload(ContractModel):

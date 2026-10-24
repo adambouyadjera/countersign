@@ -1,0 +1,243 @@
+{
+  "checked_at": "2026-10-24T19:59:21.647252+00:00",
+  "force_haiku": true,
+  "configured_primary": "gemini-3.5-flash",
+  "configured_fallback": "claude-haiku-5-5",
+  "cache_enabled": false,
+  "success": true,
+  "extraction": {
+    "invoice_id": "invoice-d361d033556441b383e3fa43608c8f08",
+    "extractor_model": "claude-haiku-5-5",
+    "fields": [
+      {
+        "name": "invoice_number",
+        "value": "INV-003",
+        "type": "string",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 4,
+          "char_start": 0,
+          "char_end": 7,
+          "quote": "INV-003",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "vendor_name",
+        "value": "Golden Gate Sanitation",
+        "type": "string",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 1,
+          "char_start": 0,
+          "char_end": 22,
+          "quote": "Golden Gate Sanitation",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "vendor_email",
+        "value": "billing@goldengatesanitation.example",
+        "type": "string",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 2,
+          "char_start": 0,
+          "char_end": 36,
+          "quote": "billing@goldengatesanitation.example",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "invoice_date",
+        "value": "2026-10-24",
+        "type": "date",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 5,
+          "char_start": 14,
+          "char_end": 24,
+          "quote": "2026-10-24",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "due_date",
+        "value": "2026-11-07",
+        "type": "date",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 6,
+          "char_start": 10,
+          "char_end": 20,
+          "quote": "2026-11-07",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "po_number",
+        "value": "PO-003",
+        "type": "string",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 11,
+          "char_start": 16,
+          "char_end": 22,
+          "quote": "PO-003",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "amount_due_cents",
+        "value": 64000,
+        "type": "money",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 17,
+          "char_start": 12,
+          "char_end": 19,
+          "quote": "$640.00",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "currency",
+        "value": "USD",
+        "type": "string",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 17,
+          "char_start": 7,
+          "char_end": 10,
+          "quote": "USD",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "remit_account_number",
+        "value": "300300003333",
+        "type": "account_number",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 16,
+          "char_start": 16,
+          "char_end": 28,
+          "quote": "300300003333",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "line_items.0.description",
+        "value": "Sanitation - three-day festival services",
+        "type": "string",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 13,
+          "char_start": 0,
+          "char_end": 40,
+          "quote": "Sanitation - three-day festival services",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "line_items.0.quantity",
+        "value": 1,
+        "type": "number",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 13,
+          "char_start": 41,
+          "char_end": 42,
+          "quote": "1",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "line_items.0.unit_price_cents",
+        "value": 64000,
+        "type": "money",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 13,
+          "char_start": 43,
+          "char_end": 50,
+          "quote": "$640.00",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      },
+      {
+        "name": "line_items.0.amount_cents",
+        "value": 64000,
+        "type": "money",
+        "span": {
+          "document_id": "document-0e93ba8bec4047228472dd1e50dd1bc2",
+          "page": 1,
+          "line": 13,
+          "char_start": 43,
+          "char_end": 50,
+          "quote": "$640.00",
+          "span_verified": true
+        },
+        "trust": "untrusted"
+      }
+    ],
+    "instruction_like_spans": [],
+    "handles": [],
+    "extraction_provenance": {
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "extracted_at": "2026-10-24T19:59:31.945211Z",
+      "cached": false,
+      "document_sha256": "ad343bdefefb8d77b2072481484aa2991ab68b9518a80e5539885dc42de60e98",
+      "prompt_version": "invoice-extraction-v1-873fd59d45d8ba711b571095221f189ca20084425613ff01ddd1ea38ff28b20b",
+      "cache_key": "b604d3a88603e62fdbead6377199353374f004ffc96890737a426d55147d9ee1",
+      "attempts": [
+        {
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "outcome": "skipped",
+          "error_code": "forced_haiku"
+        },
+        {
+          "provider": "anthropic",
+          "model": "claude-haiku-5-5",
+          "outcome": "success"
+        }
+      ]
+    }
+  },
+  "fields": 13,
+  "verified_fields": 13,
+  "http_observations": [
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "http_status": 200,
+      "observed_at": "2026-10-24T19:59:31.932695+00:00"
+    }
+  ]
+}

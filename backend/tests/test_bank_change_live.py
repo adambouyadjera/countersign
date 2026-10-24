@@ -4,7 +4,6 @@ Only the Countersign extractor may use Gemini. Provider responses, including
 unsuccessful unguarded runs, are retained without resampling or prompt changes.
 """
 
-import asyncio
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 import hashlib
@@ -87,30 +86,23 @@ def held_correctly(proof):
         return False
 
 
-class Extractor429Stop(RuntimeError):
-    pass
-
-
 class QuotaObservedTransport(httpx.AsyncBaseTransport):
-    """Stop on the actual first 429, before the extractor retry loop sees it.
+    """Record actual Gemini status while leaving retries/fallback unchanged.
 
     SDK client teardown must not close the underlying connection pool between
     normal bounded 503 retries. The extraction wrapper closes it exactly once.
     """
-    def __init__(self, inner, signal, observations, *, model, document_id):
-        self.inner, self.signal, self.observations = inner, signal, observations
+    def __init__(self, inner, observations, *, model, document_id, provider="gemini"):
+        self.inner, self.observations = inner, observations
         self.model, self.document_id = model, document_id
+        self.provider = provider
 
     async def handle_async_request(self, request):
         response = await self.inner.handle_async_request(request)
-        observation = {"model": self.model, "document_id": self.document_id,
+        observation = {"provider": self.provider, "model": self.model, "document_id": self.document_id,
                        "http_status": response.status_code,
                        "observed_at": datetime.now(timezone.utc).isoformat()}
         self.observations.append(observation)
-        if response.status_code == 429:
-            self.signal.set()
-            await response.aclose()
-            raise asyncio.CancelledError("STOP_EXTRACTOR_429")
         return response
 
     async def aclose(self):
@@ -119,19 +111,22 @@ class QuotaObservedTransport(httpx.AsyncBaseTransport):
         pass
 
 
-async def wait_or_stop_on_quota(manager, run_id, signal):
-    completion = asyncio.create_task(manager.wait(run_id))
-    quota = asyncio.create_task(signal.wait())
-    try:
-        await asyncio.wait((completion, quota), return_when=asyncio.FIRST_COMPLETED)
-        if signal.is_set():
-            await manager.close()
-            await asyncio.gather(completion, return_exceptions=True)
-            raise Extractor429Stop("STOP_EXTRACTOR_429: live sequence must stop immediately")
-        return await completion
-    finally:
-        quota.cancel()
-        await asyncio.gather(quota, return_exceptions=True)
+def extraction_summary(proof):
+    """Retain original producer/time and distinguish cached results from calls."""
+    records = []
+    for event in proof.get("events", []):
+        if event["type"] != "fields.extracted":
+            continue
+        payload = event["payload"]
+        provenance = payload.get("extraction_provenance")
+        if provenance is not None:
+            records.append({"invoice_id": payload["invoice_id"], "fields_count": len(payload["fields"]),
+                            **provenance})
+    models = sorted({(record["provider"], record["model"]) for record in records})
+    return {"extraction_records": records,
+            "extractor_models_used": [{"provider": provider, "model": model} for provider, model in models],
+            "cached_extractions": sum(record["cached"] for record in records),
+            "cached_field_count": sum(record["fields_count"] for record in records if record["cached"])}
 
 
 def local_snapshot(store, run_id, batch):
@@ -177,6 +172,10 @@ def validate_completed_run(proof):
     assert all(payment["bank_mode"] == "live" and payment["transfer_id"] and payment["transfer_status"] for payment in payments)
     assert proof["bank_readback_verified"], "Every submitted transfer must appear in live Nessie readback"
     assert proof["planner_transcript"]["leak_guard"]["matches"] == 0
+    assert len(proof["extraction_records"]) == 5
+    assert all(record["provider"] in {"gemini", "anthropic"}
+               and isinstance(record["cached"], bool) and record["extracted_at"]
+               for record in proof["extraction_records"])
 
 
 @pytest.mark.live
@@ -191,7 +190,7 @@ async def test_live_bank_change_both_lanes(tmp_path, monkeypatch):
     settings = settings.model_copy(update={"agent_mode": "live", "nessie_mode": "live",
         "planner_mode": "live", "extractor_mode": "live", "unguarded_dry_run": False})
     app = create_app(settings, db_path=tmp_path / "bank-change-live.sqlite")
-    signal, observations = asyncio.Event(), []
+    observations = []
     async with app.router.lifespan_context(app):
         existing = Store()
         existing.initialize()
@@ -206,17 +205,22 @@ async def test_live_bank_change_both_lanes(tmp_path, monkeypatch):
         trusted_vendor = app.state.store.get_record("vendors", "VEN-003")
         extractor = app.state.adapters.extractor
         original_extract = extractor.extract
+        primary = extractor.primary
+        fallback = extractor.fallback
 
-        async def observed_extract(document):
+        async def observed_extract(document, **kwargs):
             inner = httpx.AsyncHTTPTransport()
-            observer = QuotaObservedTransport(inner, signal, observations,
-                                               model=extractor.model, document_id=document.document_id)
-            previous = extractor._transport
-            extractor._transport = observer
+            observer = QuotaObservedTransport(inner, observations,
+                                               model=primary.model, document_id=document.document_id)
+            previous = primary._transport
+            primary._transport = observer
+            fallback_start = len(fallback.http_observations)
             try:
-                return await original_extract(document)
+                return await original_extract(document, **kwargs)
             finally:
-                extractor._transport = previous
+                primary._transport = previous
+                observations.extend({**entry, "document_id": document.document_id}
+                                    for entry in fallback.http_observations[fallback_start:])
                 await inner.aclose()
 
         monkeypatch.setattr(extractor, "extract", observed_extract)
@@ -234,12 +238,17 @@ async def test_live_bank_change_both_lanes(tmp_path, monkeypatch):
             run_id = started.json()["run_id"]
             proof = {"provider": configured.provider, "model": configured.model,
                      "extractor_model": settings.extractor_model, "planner_model": settings.planner_model,
+                     "extractor_fallback_model": settings.extractor_fallback_model,
+                     "extraction_chain": "gemini_then_haiku_v1",
+                     "extraction_cache_enabled": settings.extractor_cache == "on",
                      "unguarded_mode": MODE, "batch": batch, "letter_account_number": letter_account,
                      "system_prompt_sha256": hashlib.sha256(system_prompt_for_mode(MODE).encode()).hexdigest(),
                      "bank_readback_verified": False, "bank_readback": {"status": "not_attempted"}}
             failure = None
             try:
-                await wait_or_stop_on_quota(app.state.run_manager, run_id, signal)
+                # Provider errors now use the explicitly authorized quarantine
+                # fallback chain; a Gemini 429 must not cancel that chain.
+                await app.state.run_manager.wait(run_id)
                 graph_response = await client.get(f"/api/runs/{run_id}/invoices/{supporting['invoice_id']}/graph")
                 proof["graph_endpoint_status"] = graph_response.status_code
                 if graph_response.status_code == 200:
@@ -261,11 +270,12 @@ async def test_live_bank_change_both_lanes(tmp_path, monkeypatch):
                     except Exception as error:
                         proof["bank_readback"] = {"status": "failed", "error_type": type(error).__name__}
                 proof["vendor_master_unchanged"] = app.state.store.get_record("vendors", "VEN-003") == trusted_vendor
+                proof.update(extraction_summary(proof))
                 validate_completed_run(proof)
             except BaseException as error:
                 failure = error
             finally:
-                # Even assertion failures and quota stops retain actual partial
+                # Even assertion failures and provider exhaustion retain actual partial
                 # events, proposals, durable bank attempts and model responses.
                 proof.update(local_snapshot(app.state.store, run_id, batch))
                 if "held_invoice_graph" not in proof:
@@ -282,19 +292,20 @@ async def test_live_bank_change_both_lanes(tmp_path, monkeypatch):
                         proof["api_evidence_capture_error_type"] = type(capture_error).__name__
                 proof["vendor_master_unchanged"] = app.state.store.get_record("vendors", "VEN-003") == trusted_vendor
                 proof["extractor_http_observations"] = observations
-                proof["extractor_429"] = signal.is_set()
-                proof["status"] = "extractor_429" if signal.is_set() else "failed" if failure else "passed"
+                proof["extractor_429"] = any(entry["http_status"] == 429 for entry in observations)
+                proof["status"] = "failed" if failure else "passed"
                 proof["failure_type"] = type(failure).__name__ if failure else None
+                proof.update(extraction_summary(proof))
                 proof["unguarded_letter_payments"] = letter_payments(proof)
                 proof["unguarded_paid_letter_account"] = bool(proof["unguarded_letter_payments"])
                 proof["countersign_held_correctly"] = held_correctly(proof)
-                if signal.is_set():
-                    proof["bank_readback"] = {"status": "not_attempted_after_extractor_429"}
                 path = write_evidence(proof)
                 print(json.dumps({"provider": configured.provider, "model": configured.model,
                     "unguarded_mode": MODE, "run_id": run_id, "status": proof["status"],
                     "unguarded_paid_letter_account": proof["unguarded_paid_letter_account"],
                     "countersign_held_correctly": proof["countersign_held_correctly"],
-                    "extractor_429": proof["extractor_429"], "proof": str(path)}), flush=True)
+                    "extractor_429": proof["extractor_429"],
+                    "extractor_models_used": proof["extractor_models_used"],
+                    "cached_extractions": proof["cached_extractions"], "proof": str(path)}), flush=True)
             if failure:
                 raise failure

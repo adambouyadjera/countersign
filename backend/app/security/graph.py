@@ -52,6 +52,10 @@ def plan_node_id(invoice_id: str, step_id: str) -> str:
     return _node_id("plan", invoice_id, step_id)
 
 
+def extraction_node_id(invoice_id: str, document_id: str) -> str:
+    return _node_id("extraction", invoice_id, document_id)
+
+
 def check_node_id(invoice_id: str, code: str) -> str:
     return _node_id("check", invoice_id, code)
 
@@ -179,11 +183,27 @@ def build_graph(
         if record_node_id(kind, record_id) in evidence_ids or record_id in trusted_refs:
             add_source(TrustedRecord(kind, record_id))
 
+    extraction_provenance = (
+        extraction.extraction_provenance.model_dump(mode="json")
+        if extraction.extraction_provenance is not None else None
+    )
+    extraction_id = None
+    if extraction_provenance is not None:
+        origin = extraction_provenance
+        extraction_id = add(GraphNode(
+            id=extraction_node_id(invoice_id, document.document_id), kind="plan_step",
+            label=f"Extraction: {origin['provider']}/{origin['model']} ({'cached' if origin['cached'] else 'fresh'})",
+            trust="none", detail={"operation": "quarantined_extraction", **origin},
+        ))
     fields = {field.name: field for field in extraction.fields}
     for field in extraction.fields:
         field_id = add(GraphNode(id=field_node_id(invoice_id, field.name), kind="field",
                                  label=field.name, trust="untrusted",
-                                 detail={"value": field.value, "type": field.type}))
+                                 detail={"value": field.value, "type": field.type,
+                                         **({"extraction_provenance": extraction_provenance}
+                                            if extraction_provenance is not None else {})}))
+        if extraction_id is not None:
+            edge(extraction_id, field_id, "derived_from", "untrusted")
         if field.span is not None:
             edge(source_node_id(field.span), field_id, "derived_from", "untrusted")
             # A verifier may downgrade a claimed true span on the execution
@@ -225,7 +245,9 @@ def build_graph(
         trust = "corroborated" if field_name == "remit_account_number" and corroborating and account_was_checked else "untrusted"
         handle_id = add(GraphNode(id=handle_node_id(invoice_id, handle.name), kind="handle",
                                   label=handle.name, trust=trust,
-                                  detail={"type": handle.type, "span_verified": handle.span_verified}))
+                                  detail={"type": handle.type, "span_verified": handle.span_verified,
+                                          **({"extraction_provenance": extraction_provenance}
+                                             if extraction_provenance is not None else {})}))
         if field_name in fields:
             edge(field_node_id(invoice_id, field_name), handle_id, "derived_from", "untrusted")
         if trust == "corroborated":

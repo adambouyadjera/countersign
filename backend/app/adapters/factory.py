@@ -1,4 +1,4 @@
-"""Select configured service modes without any network-error fallback."""
+"""Select explicit service modes and the configured quarantined extraction chain."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ from dataclasses import dataclass
 import httpx
 
 from app.config import Settings
+from app.adapters.extraction import ResilientExtractor
+from app.adapters.haiku_extractor import LiveHaikuExtractor
+from app.security.extraction_cache import ExtractionCache
 from app.adapters.implementations import (
     AuditEventStore,
     LiveAgentLLM,
@@ -76,14 +79,20 @@ def build_adapters(
             auth="elastic", transport=transport,
         )
     )
-    extractor: ExtractorLLM = (
-        LiveExtractorLLM(
-            key=settings.gemini_api_key, model=settings.extractor_model, transport=transport,
-        ) if settings.extractor_mode == "live" else
-        OfflineExtractorLLM(
-            detail="EXTRACTOR_MODE=offline; deterministic invoice-layout parser.",
+    if settings.extractor_mode == "live":
+        cache = None
+        if settings.extractor_cache == "on":
+            # Mock transports and in-memory stores never read a real demo's
+            # extraction cache. Live application instances share the ignored DB.
+            cache = (ExtractionCache(":memory:") if transport is not None
+                     or str(getattr(store, "path", ":memory:")) == ":memory:" else ExtractionCache())
+        extractor: ExtractorLLM = ResilientExtractor(
+            LiveExtractorLLM(key=settings.gemini_api_key, model=settings.extractor_model, transport=transport),
+            LiveHaikuExtractor(key=settings.anthropic_api_key, model=settings.extractor_fallback_model, transport=transport),
+            store, cache=cache,
         )
-    )
+    else:
+        extractor = OfflineExtractorLLM(detail="EXTRACTOR_MODE=offline; deterministic invoice-layout parser.")
     planner: PlannerLLM = (
         LivePlannerLLM(
             key=settings.anthropic_api_key, model=settings.planner_model, transport=transport,

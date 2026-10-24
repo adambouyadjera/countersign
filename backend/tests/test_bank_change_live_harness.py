@@ -1,15 +1,13 @@
-"""Offline verification of live-trial retention and first-quota stopping."""
+"""Offline verification of live evidence and observable provider fallback."""
 
-import asyncio
 import json
-from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from tests.test_bank_change_live import (
-    Extractor429Stop, QuotaObservedTransport, evidence_path, held_correctly,
-    letter_payments, wait_or_stop_on_quota, write_evidence,
+    QuotaObservedTransport, evidence_path, extraction_summary, held_correctly,
+    letter_payments, write_evidence,
 )
 
 
@@ -51,41 +49,55 @@ def test_graph_and_decision_must_both_hold_with_letter_evidence():
 
 
 @pytest.mark.asyncio
-async def test_first_actual_429_cancels_before_any_retry_and_stops_both_lanes():
-    signal, observations = asyncio.Event(), []
+async def test_actual_429_is_recorded_without_cancelling_retries_or_fallback():
+    observations = []
     requests = []
     def respond(request):
         requests.append(request)
         return httpx.Response(429, json={"error": {"code": 429}})
-    transport = QuotaObservedTransport(httpx.MockTransport(respond), signal, observations,
+    transport = QuotaObservedTransport(httpx.MockTransport(respond), observations,
                                        model="extractor-model", document_id="source")
-    stopped = []
-    class Manager:
-        async def wait(self, run_id):
-            try:
-                await transport.handle_async_request(httpx.Request("POST", "https://extractor.invalid/"))
-                raise AssertionError("A 429 response must never reach a retry loop")
-            finally:
-                stopped.append("lane-finalized")
-        async def close(self):
-            stopped.append("both-lanes-cancelled")
-    with pytest.raises(Extractor429Stop, match="STOP_EXTRACTOR_429"):
-        await wait_or_stop_on_quota(Manager(), "run", signal)
-    assert len(requests) == 1 and observations[0]["http_status"] == 429
-    assert signal.is_set() and "both-lanes-cancelled" in stopped
+    for _ in range(3):
+        response = await transport.handle_async_request(httpx.Request("POST", "https://extractor.invalid/"))
+        assert response.status_code == 429
+    assert len(requests) == 3 and [entry["http_status"] for entry in observations] == [429, 429, 429]
+    assert all(entry["provider"] == "gemini" for entry in observations)
 
 
 @pytest.mark.asyncio
 async def test_503_is_returned_unchanged_and_sdk_close_does_not_close_retry_transport():
-    signal, observations = asyncio.Event(), []
+    observations = []
     class Inner(httpx.AsyncBaseTransport):
         def __init__(self):self.closed = False
         async def handle_async_request(self, request):return httpx.Response(503)
         async def aclose(self):self.closed = True
     inner = Inner()
-    transport = QuotaObservedTransport(inner, signal, observations, model="model", document_id="doc")
+    transport = QuotaObservedTransport(inner, observations, model="model", document_id="doc")
     response = await transport.handle_async_request(httpx.Request("POST", "https://extractor.invalid/"))
     await transport.aclose()
-    assert response.status_code == 503 and not signal.is_set() and not inner.closed
+    assert response.status_code == 503 and not inner.closed
     await inner.aclose()
     assert inner.closed
+
+
+def test_extraction_summary_retains_original_cached_identity_and_timestamp():
+    original = "2026-10-24T12:00:00Z"
+    proof = {"events": [
+        {"type": "fields.extracted", "payload": {"invoice_id": "fresh", "fields": [{}, {}],
+            "extraction_provenance": {"provider": "anthropic", "model": "claude-haiku-5-5",
+                                      "cached": False, "extracted_at": original}}},
+        {"type": "fields.extracted", "payload": {"invoice_id": "cached", "fields": [{}, {}, {}],
+            "extraction_provenance": {"provider": "anthropic", "model": "claude-haiku-5-5",
+                                      "cached": True, "extracted_at": original}}},
+        {"type": "fields.extracted", "payload": {"invoice_id": "gemini", "fields": [{}],
+            "extraction_provenance": {"provider": "gemini", "model": "gemini-3.5-flash",
+                                      "cached": False, "extracted_at": "2026-10-24T12:05:00Z"}}},
+    ]}
+    summary = extraction_summary(proof)
+    assert summary["cached_extractions"] == 1 and summary["cached_field_count"] == 3
+    assert summary["extraction_records"][1]["extracted_at"] == original
+    assert summary["extraction_records"][1]["cached"] is True
+    assert summary["extractor_models_used"] == [
+        {"provider": "anthropic", "model": "claude-haiku-5-5"},
+        {"provider": "gemini", "model": "gemini-3.5-flash"},
+    ]

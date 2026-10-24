@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr = SecretStr("")
     extractor_model: str = "gemini-3.5-flash-lite"
     extractor_mode: Literal["live", "offline"] = "live"
+    extractor_fallback_model: str = "claude-haiku-5-5"
+    extractor_cache: Literal["on", "off"] = "on"
     bitdeer_api_key: SecretStr = SecretStr("")
     bitdeer_base_url: str = "https://api-inference.bitdeer.ai/v1"
     naive_base_url: str = ""
@@ -82,6 +84,13 @@ class Settings(BaseSettings):
         # same documented Bitdeer default rather than selecting another model.
         if isinstance(value, str) and not value.strip():
             return "Qwen/Qwen3.8-27B" if info.field_name == "naive_model" else "zai-org/GLM-5.3"
+        return value
+
+    @field_validator("extractor_fallback_model", "extractor_cache", mode="before")
+    @classmethod
+    def default_blank_extraction_option(cls, value, info):
+        if isinstance(value, str) and not value.strip():
+            return "claude-haiku-5-5" if info.field_name == "extractor_fallback_model" else "on"
         return value
 
     @field_validator("naive_request_interval_seconds", mode="before")

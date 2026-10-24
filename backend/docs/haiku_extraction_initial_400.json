@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-10-24T19:56:01.928535+00:00",
+  "force_haiku": true,
+  "configured_primary": "gemini-3.5-flash",
+  "configured_fallback": "claude-haiku-5-5",
+  "cache_enabled": false,
+  "success": false,
+  "error_type": "ExtractorError",
+  "cause": "providers_exhausted",
+  "http_status": 400,
+  "attempts": [
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "outcome": "skipped",
+      "error_code": "forced_haiku"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "outcome": "failed",
+      "http_status": 400,
+      "error_code": "request"
+    }
+  ],
+  "http_observations": [
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "http_status": 400,
+      "observed_at": "2026-10-24T19:56:03.088172+00:00"
+    }
+  ]
+}

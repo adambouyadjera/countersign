@@ -93,7 +93,8 @@ def number_type_contract_request(spec):
 
     The contract owner must add ``number`` at the two enum locations and the
     optional provider identity and mode metadata requested for unguarded execution,
-    plus the separately selectable bank-change-letter batch.
+    plus the separately selectable bank-change-letter batch and extraction
+    provider/cache provenance. The shared contracts remain read-only.
     All other endpoint and component schemas remain subject to exact parity.
     """
     expected = deepcopy(spec)
@@ -143,6 +144,36 @@ def number_type_contract_request(spec):
         },
         "required": ["document_id", "invoice_id", "vendor_id", "document_type"],
         "title": "SupportingDocument", "type": "object",
+    }
+    schemas["FieldsExtractedPayload"]["properties"]["extraction_provenance"] = {
+        "$ref": "#/components/schemas/ExtractionProvenance",
+    }
+    schemas["ExtractionAttempt"] = {
+        "additionalProperties": False,
+        "properties": {
+            "provider": {"minLength": 1, "title": "Provider", "type": "string"},
+            "model": {"minLength": 1, "title": "Model", "type": "string"},
+            "outcome": {"enum": ["success", "failed", "skipped"], "title": "Outcome", "type": "string"},
+            "http_status": {"maximum": 599, "minimum": 100, "title": "Http Status", "type": "integer"},
+            "error_code": {"title": "Error Code", "type": "string"},
+        },
+        "required": ["provider", "model", "outcome"],
+        "title": "ExtractionAttempt", "type": "object",
+    }
+    schemas["ExtractionProvenance"] = {
+        "additionalProperties": False,
+        "properties": {
+            "provider": {"minLength": 1, "title": "Provider", "type": "string"},
+            "model": {"minLength": 1, "title": "Model", "type": "string"},
+            "extracted_at": {**deepcopy(schemas["Run"]["properties"]["created_at"]), "title": "Extracted At"},
+            "cached": {"title": "Cached", "type": "boolean"},
+            "document_sha256": {"pattern": "^[0-9a-f]{64}$", "title": "Document Sha256", "type": "string"},
+            "prompt_version": {"minLength": 1, "title": "Prompt Version", "type": "string"},
+            "cache_key": {"title": "Cache Key", "type": "string"},
+            "attempts": {"items": {"$ref": "#/components/schemas/ExtractionAttempt"}, "title": "Attempts", "type": "array"},
+        },
+        "required": ["provider", "model", "extracted_at", "cached", "document_sha256", "prompt_version"],
+        "title": "ExtractionProvenance", "type": "object",
     }
     return expected
 

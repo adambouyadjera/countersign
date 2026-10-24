@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 import logging
 import re
 from typing import Any
@@ -22,6 +21,7 @@ from app.contract_models import (
     RunLane, RunRequest, RunTallies, SourceSpan,
 )
 from app.pipeline.extractor import ExtractorError
+from app.pipeline.spans import field_source_verified as _field_verified, span_source_verified as _span_verified
 from app.pipeline.planner import propose
 from app.pipeline.unguarded_agent import UnguardedAgent
 from app.pipeline.unguarded_tools import UnguardedTools
@@ -41,7 +41,6 @@ DEFAULT_INSTRUCTION = (
     "open purchase order. Pay only to accounts on file; anything else needs "
     "human approval."
 )
-_MONEY = re.compile(r"(?<![\w.])(?:\$|USD\s*)?([0-9][0-9,]*\.[0-9]{2})(?![\d.])")
 _PAYMENT_FIELDS = (
     "invoice_number", "vendor_name", "vendor_email", "due_date", "po_number",
     "amount_due_cents", "currency", "remit_account_number",
@@ -62,46 +61,6 @@ class _InvoiceProcessingError(RuntimeError):
 
 def _text(value: Any) -> str:
     return " ".join(str(value).split()).casefold()
-
-
-def _account(value: Any) -> str:
-    return re.sub(r"[\s-]", "", str(value))
-
-
-def _span_verified(span: SourceSpan | None, document: DocumentText) -> bool:
-    """Never accept an adapter's true flag without checking the original slice."""
-    if span is None or not span.span_verified or span.document_id != document.document_id:
-        return False
-    for page in document.pages:
-        if page.page != span.page:
-            continue
-        for line in page.lines:
-            if line.line == span.line:
-                return (
-                    0 <= span.char_start < span.char_end <= len(line.text)
-                    and line.text[span.char_start:span.char_end] == span.quote
-                )
-    return False
-
-
-def _field_verified(field: ExtractedField | None, document: DocumentText) -> bool:
-    if field is None or not _span_verified(field.span, document):
-        return False
-    if field.name == "amount_due_cents":
-        if type(field.value) is not int:
-            return False
-        for match in _MONEY.finditer(field.span.quote):
-            try:
-                if Decimal(match[1].replace(",", "")) * 100 == field.value:
-                    return True
-            except InvalidOperation:
-                continue
-        return False
-    if not isinstance(field.value, str) or not field.value:
-        return False
-    if field.name == "remit_account_number":
-        return bool(_account(field.value)) and _account(field.value) in _account(field.span.quote)
-    return _text(field.value) in _text(field.span.quote)
 
 
 def _payment_inputs_verified(document, extraction, invoice) -> bool:
@@ -188,7 +147,8 @@ class RunManager:
             ), failed=True)
         self._tasks.clear()
 
-    async def _event(self, run_id: str, event_type: str, payload: dict, *, lane="countersign", mode=None):
+    async def _event(self, run_id: str, event_type: str, payload: dict, *, lane="countersign", mode=None,
+                     provider=None, model=None):
         run = self.store.get_run(run_id)
         if mode is None and lane == "system":
             run = self.store.get_run(run_id)
@@ -200,7 +160,9 @@ class RunManager:
             **({"provider": getattr(self.adapters.agent, "provider", "offline" if self.adapters.agent.mode == "offline" else "unknown"),
                 "model": self.adapters.agent.model,
                 "unguarded_mode": (run.unguarded_mode if run else None) or "ap"}
-               if lane == "unguarded" else {}), "payload": payload,
+               if lane == "unguarded" else
+               {key: value for key, value in {"provider": provider, "model": model}.items() if value is not None}),
+            "payload": payload,
         })
 
     async def _started(self, run: Run) -> None:
@@ -639,7 +601,11 @@ class RunManager:
             "extraction_id": extraction_id, "run_id": run.run_id,
             **extraction.model_dump(mode="json"),
         })
-        await self._event(run.run_id, "fields.extracted", extraction.model_dump(mode="python"), mode=self.adapters.extractor.mode)
+        origin = extraction.extraction_provenance
+        await self._event(run.run_id, "fields.extracted", extraction.model_dump(mode="python"),
+                          mode=self.adapters.extractor.mode,
+                          provider=origin.provider if origin is not None else None,
+                          model=origin.model if origin is not None else None)
         progress["stage"] = "span_verification"
         if not _payment_inputs_verified(document, extraction, invoice):
             await self._event(run.run_id, "error", {
