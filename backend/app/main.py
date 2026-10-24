@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import approvals, demo, evidence, health, runs, world
+from app.api import approvals, attacks, demo, evidence, health, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
@@ -109,7 +109,10 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         }
         code = codes.get(exc.status_code, "internal")
         message = exc.detail if isinstance(exc.detail, str) and exc.status_code < 500 else "Service unavailable" if exc.status_code == 503 else "Internal server error"
-        return error_response(exc.status_code, code, message)
+        response = error_response(exc.status_code, code, message)
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, exc: RequestValidationError):
@@ -118,7 +121,14 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
             {"location": list(error["loc"]), "type": error["type"]}
             for error in exc.errors()
         ]
-        return error_response(422, "validation_error", "Request validation failed", {"errors": issues})
+        message = "Request validation failed"
+        if request.url.path == "/api/attacks":
+            locations = {tuple(error["loc"]) for error in exc.errors()}
+            if ("body", "attack_text") in locations:
+                message = "attack_text must contain 1 to 600 characters after control characters are stripped."
+            elif ("body", "placement") in locations:
+                message = "placement must be visible_note, hidden_white_text, or footer."
+        return error_response(422, "validation_error", message, {"errors": issues})
 
     @app.exception_handler(BankError)
     async def bank_error(request: Request, exc: BankError):
@@ -134,6 +144,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(runs.router)
     api.include_router(world.router)
     api.include_router(approvals.router)
+    api.include_router(attacks.router)
     api.include_router(evidence.router)
     app.include_router(api)
 
