@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=Manrope:wght@400;600;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F4EF}
+a{color:#2448C8}a:hover{color:#16308F}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #F6F4EF; color: #1A1C22; font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 22px; padding: 14px 28px; border-bottom: 1px solid #D3CDC1; font-family: 'JetBrains Mono', monospace">
+    <span style="display: inline-flex; align-items: center; gap: 8px; color: #2448C8; font-weight: 700"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="2" width="20" height="15" rx="4" fill="none" stroke="currentColor" stroke-width="2"></rect><circle cx="9.5" cy="9.5" r="2" fill="currentColor"></circle><circle cx="16.5" cy="9.5" r="2" fill="currentColor"></circle><path d="M9 17v4M17 17v4M6 23h6M14 23h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>countersign</span>
+    <nav aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 18px">
+      <a href="PalettePaper.dc.html" style="color: #5C5F68; text-decoration: none">console</a>
+      <a href="CaseFile.dc.html" style="color: #5C5F68; text-decoration: none">case files</a>
+      <a href="AttackLab.dc.html" style="color: #5C5F68; text-decoration: none">attack lab</a>
+      <a href="Books.dc.html" style="color: #5C5F68; text-decoration: none">books</a>
+      <a href="Eval.dc.html" style="color: #5C5F68; text-decoration: none">proof</a>
+      <a href="Audit.dc.html" style="color: #1A1C22; text-decoration: none; border-bottom: 2px solid #2448C8">audit</a>
+    </nav>
+    <span style="margin-left: auto; color: #5C5F68">elastic agent builder · countersign-audit-analyst</span>
+  </header>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 22px; padding: 24px 28px 28px; flex: 1">
+    <main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+      <h1 style="margin: 0; font-size: 28px; font-weight: 800">Ask the auditor</h1>
+      <div style="display: flex; gap: 12px; align-items: flex-start; background: #FFFFFF; border: 1px solid #D3CDC1; border-radius: 12px; padding: 14px 16px"><div aria-hidden="true" style="white-space: pre; font-family: 'JetBrains Mono', monospace; color: #2448C8; font-weight: 700; font-size: 13px; line-height: 1.1">╭───╮
+│- -│
+╰┬─┬╯</div><div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #2448C8; font-weight: 700">sig</div><div style="line-height: 1.5">I don't grade my own homework. The auditor reads the event log on its own.</div></div></div>
+      <form style="display: flex; gap: 10px; flex-wrap: wrap">
+        <label for="q" style="position: absolute; left: -9999px">Question</label>
+        <input id="q" type="text" value="Which payments were held because the payee came from an untrusted document?" style="flex: 1 1 420px; font-family: inherit; font-size: 15px; padding: 12px 14px; border: 1px solid #D3CDC1; border-radius: 8px; background: #FFFFFF; min-height: 48px">
+        <button type="button" style="background: #2448C8; color: #FFFFFF; border: 0; border-radius: 8px; padding: 12px 18px; font-family: inherit; font-weight: 600; min-height: 48px">Ask</button>
+      </form>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <button type="button" style="font-family: inherit; font-size: 13px; background: #FFFFFF; border: 1px solid #D3CDC1; border-radius: 999px; padding: 8px 14px; min-height: 36px">Money sent to accounts not on file</button>
+        <button type="button" style="font-family: inherit; font-size: 13px; background: #FFFFFF; border: 1px solid #D3CDC1; border-radius: 999px; padding: 8px 14px; min-height: 36px">Who approved what today?</button>
+        <button type="button" style="font-family: inherit; font-size: 13px; background: #FFFFFF; border: 1px solid #D3CDC1; border-radius: 999px; padding: 8px 14px; min-height: 36px">Summarize the latest run</button>
+      </div>
+
+      <article style="background: #FFFFFF; border: 1px solid #D3CDC1; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+        <div style="font-size: 16px; line-height: 1.6">One payment was held for that reason this session: <strong>INV-003</strong> from Golden Gate Sanitation, $640.00, in run <span style="font-family: 'JetBrains Mono', monospace">[RUN ID]</span>. Its pay-to account came only from document text and didn't match the vendor master. It is waiting for Dana Okafor.</div>
+        <details open style="border: 1px solid #ECE8DF; border-radius: 8px; padding: 10px 14px">
+          <summary style="font-family: 'JetBrains Mono', monospace; font-size: 13px; cursor: pointer">step 1 · held_payments_by_reason · [N] rows</summary>
+          <div style="margin-top: 10px; background: #F6F4EF; border-radius: 6px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap">FROM countersign-events
+| WHERE type == "payment.held" AND reason_codes == "BANK_DETAILS_MISMATCH"
+| KEEP ts, run_id, invoice_id, vendor_id, amount_cents
+| SORT ts DESC</div>
+        </details>
+        <div style="font-size: 12px; color: #5C5F68">Answered by Elastic Agent Builder from the indexed event log. Countersign never answers audit questions from its own model.</div>
+      </article>
+    </main>
+
+    <aside aria-label="Event log" style="flex: 1 1 380px; max-width: 460px; background: #FFFFFF; border: 1px solid #D3CDC1; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px">
+      <div style="font-family: 'Manrope', sans-serif; font-size: 12px; letter-spacing: 0.08em; color: #5C5F68">INDEXED EVENTS · LATEST</div>
+      <div style="display: flex; gap: 10px; border-bottom: 1px solid #ECE8DF; padding: 6px 0"><span style="color: #5C5F68">24</span><span>lane.completed</span><span style="margin-left: auto; color: #5C5F68">countersign</span></div>
+      <div style="display: flex; gap: 10px; border-bottom: 1px solid #ECE8DF; padding: 6px 0"><span style="color: #5C5F68">23</span><span>payment.executed · INV-005</span><span style="margin-left: auto; color: #1E7A4E">on file</span></div>
+      <div style="display: flex; gap: 10px; border-bottom: 1px solid #ECE8DF; padding: 6px 0"><span style="color: #5C5F68">22</span><span>policy.decision · INV-005</span><span style="margin-left: auto; color: #1E7A4E">ALLOW</span></div>
+      <div style="display: flex; gap: 10px; border-bottom: 1px solid #ECE8DF; padding: 6px 0; background: #FCE9E6"><span style="color: #5C5F68">14</span><span>payment.held · INV-003</span><span style="margin-left: auto; color: #B42318">BANK_DETAILS</span></div>
+      <div style="display: flex; gap: 10px; border-bottom: 1px solid #ECE8DF; padding: 6px 0"><span style="color: #5C5F68">13</span><span>policy.decision · INV-003</span><span style="margin-left: auto; color: #B42318">HOLD</span></div>
+      <div style="display: flex; gap: 10px; padding: 6px 0"><span style="color: #5C5F68">12</span><span>ledger.posted · INV-002</span><span style="margin-left: auto; color: #5C5F68">JE-4</span></div>
+      <a href="#kibana" style="margin-top: auto; font-family: 'Manrope', sans-serif">open in Kibana</a>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

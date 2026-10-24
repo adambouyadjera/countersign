@@ -2,16 +2,23 @@ import { create } from 'zustand'
 import type { Batch, Run } from '@/api/types'
 
 /**
- * Console UI state that should survive navigating away and back: the batch on
- * the rail and the run being watched. Both hold server responses verbatim.
+ * Console UI state that should survive navigating away and back: the batch in
+ * the inbox, the run being watched, and the invoice picked in the inbox.
+ * Batch and run hold server responses verbatim.
  */
 interface ConsoleStore {
   batch: Batch | null
   run: Run | null
   /** Bumped on every POST /api/runs so a re-run with the same run_id still resubscribes. */
   runNonce: number
+  /** Invoice the user picked; null follows the duel automatically. */
+  selectedInvoiceId: string | null
+  /** The invoice the console is showing (picked or followed); the header's case-files link opens it. */
+  focusedInvoiceId: string | null
   setBatch: (batch: Batch) => void
   setRun: (run: Run) => void
+  selectInvoice: (invoiceId: string | null) => void
+  setFocused: (invoiceId: string | null) => void
   clear: () => void
 }
 
@@ -19,7 +26,11 @@ export const useConsoleStore = create<ConsoleStore>()((set) => ({
   batch: null,
   run: null,
   runNonce: 0,
-  setBatch: (batch) => set({ batch, run: null }),
-  setRun: (run) => set((s) => ({ run, runNonce: s.runNonce + 1 })),
-  clear: () => set({ batch: null, run: null }),
+  selectedInvoiceId: null,
+  focusedInvoiceId: null,
+  setBatch: (batch) => set({ batch, run: null, selectedInvoiceId: null }),
+  setRun: (run) => set((s) => ({ run, runNonce: s.runNonce + 1, selectedInvoiceId: null })),
+  selectInvoice: (selectedInvoiceId) => set({ selectedInvoiceId }),
+  setFocused: (focusedInvoiceId) => set({ focusedInvoiceId }),
+  clear: () => set({ batch: null, run: null, selectedInvoiceId: null }),
 }))

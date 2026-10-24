@@ -10,9 +10,9 @@ describe('<Money>', () => {
     expect(el.className).toContain('tabular')
   })
 
-  it('marks signed negatives in taint colour', () => {
+  it('marks signed negatives in the bad colour', () => {
     render(<Money cents={-500} signed />)
-    expect(screen.getByLabelText('−$5.00').className).toContain('text-taint')
+    expect(screen.getByLabelText('−$5.00').className).toContain('text-bad')
   })
 
   it('updates to the new value when not flowing', () => {

@@ -1,60 +1,72 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { SigLogo } from '@/components/sig'
 import { MockBadge } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { HealthStrip } from './HealthStrip'
-import { SealMark } from './SealMark'
+import { useConsoleStore } from '@/state/consoleStore'
+import { AutopilotStatus } from './AutopilotStatus'
+import { ServiceHealth } from './ServiceHealth'
+
+const linkClass = (active: boolean) =>
+  cn('border-b-2 no-underline', active ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg')
+
+/** "case files" opens the case for the invoice picked on the console; there is no case list yet. */
+function CaseFilesLink() {
+  const { pathname } = useLocation()
+  const run = useConsoleStore((s) => s.run)
+  const invoiceId = useConsoleStore((s) => s.focusedInvoiceId)
+  const active = pathname.startsWith('/runs/')
+  if (!run || !invoiceId) {
+    return (
+      <span
+        aria-disabled="true"
+        title="Run a batch and pick an invoice to open its case file"
+        className={cn(linkClass(active), 'cursor-default')}
+      >
+        case files
+      </span>
+    )
+  }
+  return (
+    <Link
+      to={`/runs/${encodeURIComponent(run.run_id)}/invoices/${encodeURIComponent(invoiceId)}`}
+      aria-current={active ? 'page' : undefined}
+      className={linkClass(active)}
+    >
+      case files
+    </Link>
+  )
+}
 
 const NAV = [
-  { to: '/', label: 'Console', folio: 'I' },
-  { to: '/redteam', label: 'Red Team', folio: 'II' },
-  { to: '/audit', label: 'Audit', folio: 'III' },
+  { to: '/attack', label: 'attack lab' },
+  { to: '/books', label: 'books' },
+  { to: '/proof', label: 'proof' },
+  { to: '/audit', label: 'audit' },
 ] as const
 
 export function AppShell() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="rule-heavy-double sticky top-0 z-40 mb-[6px] bg-paper">
-        <div className="flex h-16 items-stretch gap-10 pr-6 pl-8">
-          <NavLink to="/" className="flex items-center gap-3 text-ink no-underline" aria-label="Countersign home">
-            <SealMark size={38} />
-            <span className="display text-[2.375rem] leading-none">Countersign</span>
+    <div className="flex h-dvh flex-col">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-line px-7 py-3.5">
+        <Link to="/" aria-label="Countersign home" className="no-underline">
+          <SigLogo />
+        </Link>
+        <nav aria-label="Main" className="flex flex-wrap gap-[18px]">
+          <NavLink to="/" end className={({ isActive }) => linkClass(isActive)}>
+            console
           </NavLink>
-          <nav aria-label="Primary" className="flex items-stretch">
-            {NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  cn(
-                    'relative flex items-center gap-2 px-4 no-underline transition-colors',
-                    isActive ? 'text-ink' : 'text-ink-soft hover:text-ink',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className="font-display text-[1.125rem] italic">{item.folio}.</span>
-                    <span className={cn('text-[0.9375rem]', isActive ? 'font-semibold' : 'font-medium')}>
-                      {item.label}
-                    </span>
-                    {isActive && <span aria-hidden className="absolute inset-x-3 bottom-0 h-[4px] bg-ink" />}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-5">
-            <MockBadge />
-            <span className="hidden border-l border-rule-strong pl-5 text-right leading-tight xl:block">
-              <span className="block font-display text-[1.25rem] text-ink italic">Fogline Festival</span>
-              <span className="smallcaps block text-ink-soft">Accounts payable</span>
-            </span>
-          </div>
-        </div>
-        <HealthStrip />
+          <CaseFilesLink />
+          {NAV.map((item) => (
+            <NavLink key={item.to} to={item.to} className={({ isActive }) => linkClass(isActive)}>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+        <AutopilotStatus />
+        <MockBadge />
+        <ServiceHealth className="ml-auto" />
       </header>
-      <main className="flex min-h-0 flex-1 flex-col">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Outlet />
       </main>
     </div>

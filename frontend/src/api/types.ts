@@ -66,3 +66,8 @@ export type BodyJson<Op extends keyof operations> = operations[Op] extends {
   : operations[Op] extends { requestBody?: { content: { 'application/json': infer T } } }
     ? T
     : never
+
+export type Person = S['Person']
+export type VendorDetail = S['VendorDetail']
+export type Approval = S['Approval']
+export type ApprovalDecision = S['ApprovalDecision']

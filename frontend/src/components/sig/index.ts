@@ -1,0 +1,6 @@
+export { SIG_EYES, sigFaceLines } from './face'
+export { SigFace } from './SigFace'
+export { SigLogo } from './SigLogo'
+export { SigSays } from './SigSays'
+export type { SigExpression } from './face'
+export { SigPlaceholder } from './SigPlaceholder'

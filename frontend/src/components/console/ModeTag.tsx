@@ -10,8 +10,8 @@ export function ModeTag({ mode, service, className }: { mode?: Mode; service?: s
       data-mode={mode}
       title={service ? `${service}: ${text}` : text}
       className={cn(
-        'inline-flex h-5 items-center rounded-[2px] border border-dashed border-ink-soft px-1.5',
-        'font-mono text-[0.6875rem] leading-none whitespace-nowrap text-ink-soft',
+        'inline-flex items-center rounded-[4px] border border-dashed border-muted px-1.5',
+        'font-mono text-meta leading-5 whitespace-nowrap text-muted',
         className,
       )}
     >

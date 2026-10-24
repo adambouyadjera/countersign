@@ -14,11 +14,22 @@ const viewports = [
   { width: 1920, height: 1080 },
 ]
 
-for (const path of ['/', '/kit', '/redteam', '/audit']) {
-  test(`${path} loads with no console errors`, async ({ page }) => {
+const PAGES = [
+  { path: '/', heading: 'Sig · AP clerk' },
+  { path: '/runs/run-example-both/invoices/INV-003', heading: 'Case file' },
+  { path: '/attack', heading: 'Attack lab' },
+  { path: '/books', heading: 'Books' },
+  { path: '/proof', heading: 'Proof' },
+  { path: '/audit', heading: 'Audit' },
+]
+
+for (const { path, heading } of PAGES) {
+  test(`${path} loads with the header, the MOCK DATA badge and no console errors`, async ({ page }) => {
     const errors = collectConsoleErrors(page)
     await page.goto(path)
     await expect(page.getByRole('link', { name: 'Countersign home' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'MOCK DATA' })).toBeVisible()
     await page.waitForLoadState('networkidle')
     expect(errors).toEqual([])
   })
@@ -36,28 +47,23 @@ for (const path of ['/', '/kit', '/redteam', '/audit']) {
   }
 }
 
-test('/kit shows every component', async ({ page }) => {
-  await page.goto('/kit')
-  for (const name of [
-    'Button',
-    'Panel',
-    'LedgerRule',
-    'HandleChip',
-    'Money',
-    'AccountNumber',
-    'TrustBadge',
-    'Seal',
-    'StatusDot',
-    'Drawer',
-    'Kbd',
-    'EmptyState',
-    'ErrorState',
-    'MockBadge',
-  ]) {
-    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+test('pages not built yet say so through Sig, with no sample content', async ({ page }) => {
+  for (const path of ['/attack', '/books', '/proof', '/audit']) {
+    await page.goto(path)
+    await expect(page.getByText(/^Not built yet\./)).toBeVisible()
   }
-  await page.getByRole('button', { name: 'Open drawer' }).click()
-  await expect(page.getByRole('dialog', { name: 'INV-003 held' })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
+test('header nav: six sections, health on the right', async ({ page }) => {
+  await page.goto('/')
+  const nav = page.getByRole('navigation', { name: 'Main' })
+  await expect(nav).toHaveText(/console\s*case files\s*attack lab\s*books\s*proof\s*audit/)
+  await expect(nav.getByRole('link', { name: 'console' })).toHaveAttribute('aria-current', 'page')
+  await nav.getByRole('link', { name: 'books' }).click()
+  await expect(page).toHaveURL(/\/books$/)
+  const health = page.getByRole('list', { name: 'Service health' })
+  for (const name of ['nessie', 'elastic', 'anthropic', 'gemini', 'bitdeer']) {
+    await expect(health.locator(`[data-service="${name}"]`)).toHaveAttribute('data-status', 'offline')
+  }
+  await expect(health).toContainText('offline')
 })
