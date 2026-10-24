@@ -1,0 +1,20 @@
+# secrets
+.env
+.env.*
+!.env.example
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+backend/data/*.db
+backend/data/generated/
+# node
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+# os and editors
+.DS_Store
+.idea/
