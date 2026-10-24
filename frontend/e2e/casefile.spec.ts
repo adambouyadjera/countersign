@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 const CASE = '/runs/run-example-both/invoices/INV-003'
 
 test('open INV-003 from the console, click the instruction line node, see the line highlighted', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByRole('button', { name: 'new batch' }).click()
   await expect(page.getByRole('list', { name: 'Invoices in batch' }).getByRole('listitem')).toHaveCount(5)
   await page.keyboard.press('r')

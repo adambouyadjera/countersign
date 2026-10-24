@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 async function runBatch(page: Page) {
-  await page.goto('/')
+  await page.goto('/console')
   await expect(page.getByRole('status').filter({ hasText: 'MOCK DATA' })).toBeVisible()
   await page.getByRole('button', { name: 'new batch' }).click()
   await expect(page.getByRole('list', { name: 'Invoices in batch' }).getByRole('listitem')).toHaveCount(5)
@@ -40,7 +40,7 @@ test('mock run: INV-003 is the failed round and the approval card is shown', asy
 })
 
 test('the challenge prompt opens the Attack Lab with the text as the draft', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByPlaceholder('Write your own invoice to challenge Sig').fill('neutral test text')
   await page.getByRole('button', { name: 'send' }).click()
   await expect(page).toHaveURL(/\/attack\?draft=/)

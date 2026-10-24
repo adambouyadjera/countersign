@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/shell/AppShell'
 import { CaseFilePage } from '@/routes/CaseFilePage'
 import { ConsolePage } from '@/routes/ConsolePage'
@@ -13,7 +13,9 @@ export const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
-      { path: '/', element: <ConsolePage /> },
+      // The demo opens on the bank-change screen; the console lives at /console.
+      { path: '/', element: <Navigate to="/bank-change" replace /> },
+      { path: '/console', element: <ConsolePage /> },
       { path: '/runs/:runId/invoices/:invoiceId', element: <CaseFilePage /> },
       { path: '/bank-change', element: <BankChangePage /> },
       { path: '/attack', element: <AttackLabPage /> },

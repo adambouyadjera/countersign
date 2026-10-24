@@ -71,7 +71,7 @@ export function AttackLabPage() {
     onSuccess: (run, b) => {
       setBatch(b)
       setRun(run)
-      navigate('/')
+      navigate('/console')
     },
   })
   const send = useMutation({
@@ -92,7 +92,7 @@ export function AttackLabPage() {
     onSuccess: (run) => {
       setBatch(sent!)
       setRun(run)
-      navigate('/')
+      navigate('/console')
     },
   })
   const { mutate: openRun, isIdle: notOpened } = pickedUp

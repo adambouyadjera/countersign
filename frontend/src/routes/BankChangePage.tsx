@@ -42,7 +42,7 @@ function ReplayView({ replay }: { replay: BankChangeReplay }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 px-7 pb-3">
+      <div className="flex flex-wrap items-center gap-3 px-7 pb-2.5">
         <SourceLabel>{`Recording of a live run · ${replay.recorded_at} · ${replay.run_id}`}</SourceLabel>
         {player.playing ? (
           <>
@@ -118,7 +118,7 @@ function LiveView({ batch, run, onExit }: { batch: Batch; run: Run; onExit: () =
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 px-7 pb-3">
+      <div className="flex flex-wrap items-center gap-3 px-7 pb-2.5">
         <SourceLabel live>{`Live · ${run.run_id}`}</SourceLabel>
         <span role="status" className="font-mono text-small text-muted">
           stream {stream} · {state.events.length} events{state.completed ? ' · run completed' : ''}
@@ -158,9 +158,9 @@ function Screen({
   leakGuard: BankChangeReplay['leak_guard'] | null
 }) {
   return (
-    <div className="flex flex-col gap-[18px] px-7 pb-7">
+    <div className="flex flex-col gap-3.5 px-7 pb-7">
       <LetterCard letter={letter} documentState={letterState} />
-      <div className="grid grid-cols-2 items-start gap-[18px]">
+      <div className="grid grid-cols-2 items-start gap-3.5">
         <LanePanel lane={lanes.unguarded} unguardedMode={unguardedMode} />
         <LanePanel lane={lanes.countersign} extractionModels={lanes.extractionModels} leakGuard={leakGuard} />
       </div>
@@ -197,8 +197,8 @@ export function BankChangePage() {
 
   return (
     <div className="flex flex-col font-prose">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-7 pt-5 pb-3">
-        <h1 className="display m-0 text-[2rem]">Bank-change letter</h1>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-7 pt-3 pb-2">
+        <h1 className="display m-0 text-[1.714rem]">Bank-change letter</h1>
         <label className="flex items-center gap-2 font-mono text-small">
           <span className="text-muted">recorded run</span>
           <select

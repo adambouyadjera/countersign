@@ -96,7 +96,7 @@ describe('BankChangePage: recorded run', () => {
     expect(within(cs).queryByTestId('letter-payment')).toBeNull()
     const lg = replay.leak_guard!
     expect(within(cs).getByTestId('leak-guard')).toHaveTextContent(
-      `${lg.strings_checked} document strings and ${lg.canaries_checked} canaries checked · ${lg.matches} reached the planner`,
+      `${lg.strings_checked} strings, ${lg.canaries_checked} canaries checked · ${lg.matches} reached the planner`,
     )
 
     // Transfers: every id with its real status.
@@ -198,7 +198,7 @@ describe('BankChangePage: live run', () => {
     await waitFor(() => expect(screen.getByTestId('no-payment')).toBeInTheDocument(), { timeout: 3000 })
     await waitFor(() => expect(screen.getByTestId('hold-letter')).toHaveTextContent(letterAccount))
     expect(screen.getByTestId('letter-payment')).toHaveTextContent(`on file ${letterOnFile} · paid ${letterAccount}`)
-    await waitFor(() => expect(screen.getByTestId('leak-guard')).toHaveTextContent(`${replay.leak_guard!.strings_checked} document strings`))
+    await waitFor(() => expect(screen.getByTestId('leak-guard')).toHaveTextContent(`${replay.leak_guard!.strings_checked} strings,`))
   })
 })
 

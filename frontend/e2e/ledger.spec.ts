@@ -28,7 +28,7 @@ test('proof: tiles start empty and fill from the eval and red-team jobs', async 
 })
 
 test('audit: ask, see the answer and ES|QL; the event log follows the current run', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByRole('button', { name: 'new batch' }).click()
   await expect(page.getByRole('list', { name: 'Invoices in batch' }).getByRole('listitem')).toHaveCount(5)
   await page.keyboard.press('r')
@@ -45,7 +45,7 @@ test('audit: ask, see the answer and ES|QL; the event log follows the current ru
 })
 
 test('console header: the autopilot switch flips via POST /api/autopilot', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/console')
   const sw = page.getByRole('switch', { name: 'autopilot' })
   await expect(sw).toHaveAttribute('aria-checked', 'false')
   await sw.click()
