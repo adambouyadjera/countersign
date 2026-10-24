@@ -1,0 +1,16 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "mode": "live",
+  "invoice_number": "INV-001",
+  "success": false,
+  "error_type": "ExtractorError",
+  "cause": "request",
+  "http_status": 503,
+  "attempts": 1,
+  "http_statuses": [
+    503
+  ],
+  "request_count": 1,
+  "checked_at": "2026-10-24T19:17:58.344207+00:00"
+}

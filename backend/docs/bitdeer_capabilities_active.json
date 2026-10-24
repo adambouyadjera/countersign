@@ -1,0 +1,33 @@
+[
+  {
+    "provider": "bitdeer",
+    "model": "Qwen/Qwen3.8-27B",
+    "chosen_model": "Qwen/Qwen3.8-27B",
+    "available_models": [
+      "deepseek-ai/DeepSeek-V4.1-Flash",
+      "zai-org/GLM-5.3",
+      "Qwen/Qwen3.8-27B",
+      "zai-org/GLM-5.3-Flash",
+      "deepseek-ai/DeepSeek-V4-Flash",
+      "BAAI/bge-m3",
+      "BAAI/bge-reranker-v2-m3",
+      "seedream-5.0-lite"
+    ],
+    "probes": [
+      {
+        "model": "Qwen/Qwen3.8-27B",
+        "tool_calling": true,
+        "finish_reason": "tool_calls",
+        "tool_calls": [
+          {
+            "name": "capability_probe",
+            "arguments": "{\"marker\": \"ready\"}"
+          }
+        ]
+      }
+    ],
+    "tool_calling_supported": true,
+    "protocol": "tools",
+    "max_tokens": 8192
+  }
+]

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 import logging
 import re
 from typing import Any
@@ -21,6 +21,7 @@ from app.contract_models import (
     RunLane, RunRequest, RunTallies, SourceSpan,
 )
 from app.pipeline.extractor import ExtractorError
+from app.pipeline.spans import field_source_verified as _field_verified, span_source_verified as _span_verified
 from app.pipeline.planner import propose
 from app.pipeline.unguarded_agent import UnguardedAgent
 from app.pipeline.unguarded_tools import UnguardedTools
@@ -31,6 +32,8 @@ from app.security.policy import PolicyEngine
 from app.security.handles import HandleTable
 from app.security.interpreter import Interpreter
 from app.security.leak_guard import ProvenanceLeakError
+from app.world.batches import supporting_documents_for_invoice
+from app.world.bank_changes import remittance_field
 
 
 DEFAULT_INSTRUCTION = (
@@ -38,7 +41,6 @@ DEFAULT_INSTRUCTION = (
     "open purchase order. Pay only to accounts on file; anything else needs "
     "human approval."
 )
-_MONEY = re.compile(r"(?<![\w.])(?:\$|USD\s*)?([0-9][0-9,]*\.[0-9]{2})(?![\d.])")
 _PAYMENT_FIELDS = (
     "invoice_number", "vendor_name", "vendor_email", "due_date", "po_number",
     "amount_due_cents", "currency", "remit_account_number",
@@ -59,46 +61,6 @@ class _InvoiceProcessingError(RuntimeError):
 
 def _text(value: Any) -> str:
     return " ".join(str(value).split()).casefold()
-
-
-def _account(value: Any) -> str:
-    return re.sub(r"[\s-]", "", str(value))
-
-
-def _span_verified(span: SourceSpan | None, document: DocumentText) -> bool:
-    """Never accept an adapter's true flag without checking the original slice."""
-    if span is None or not span.span_verified or span.document_id != document.document_id:
-        return False
-    for page in document.pages:
-        if page.page != span.page:
-            continue
-        for line in page.lines:
-            if line.line == span.line:
-                return (
-                    0 <= span.char_start < span.char_end <= len(line.text)
-                    and line.text[span.char_start:span.char_end] == span.quote
-                )
-    return False
-
-
-def _field_verified(field: ExtractedField | None, document: DocumentText) -> bool:
-    if field is None or not _span_verified(field.span, document):
-        return False
-    if field.name == "amount_due_cents":
-        if type(field.value) is not int:
-            return False
-        for match in _MONEY.finditer(field.span.quote):
-            try:
-                if Decimal(match[1].replace(",", "")) * 100 == field.value:
-                    return True
-            except InvalidOperation:
-                continue
-        return False
-    if not isinstance(field.value, str) or not field.value:
-        return False
-    if field.name == "remit_account_number":
-        return bool(_account(field.value)) and _account(field.value) in _account(field.span.quote)
-    return _text(field.value) in _text(field.span.quote)
 
 
 def _payment_inputs_verified(document, extraction, invoice) -> bool:
@@ -142,6 +104,7 @@ class RunManager:
             instruction=request.instruction if request.instruction is not None else DEFAULT_INSTRUCTION,
             created_at=datetime.now(timezone.utc),
             lanes=[RunLane(lane=lane, status="running") for lane in lanes],
+            unguarded_mode=request.unguarded_mode or "ap",
         )
         self.store.save_run(run)
         self.store.save_record("planner_transcripts", run.run_id, {
@@ -184,14 +147,22 @@ class RunManager:
             ), failed=True)
         self._tasks.clear()
 
-    async def _event(self, run_id: str, event_type: str, payload: dict, *, lane="countersign", mode=None):
+    async def _event(self, run_id: str, event_type: str, payload: dict, *, lane="countersign", mode=None,
+                     provider=None, model=None):
+        run = self.store.get_run(run_id)
         if mode is None and lane == "system":
             run = self.store.get_run(run_id)
             active_modes = [self._unguarded_mode if item.lane == "unguarded" else self.mode
                             for item in run.lanes] if run is not None else [self.mode]
             mode = "offline" if "offline" in active_modes else "dry_run" if "dry_run" in active_modes else "live"
         return await self.bus.publish(run_id, {
-            "type": event_type, "lane": lane, "mode": mode or (self._unguarded_mode if lane == "unguarded" else self.mode), "payload": payload,
+            "type": event_type, "lane": lane, "mode": mode or (self._unguarded_mode if lane == "unguarded" else self.mode),
+            **({"provider": getattr(self.adapters.agent, "provider", "offline" if self.adapters.agent.mode == "offline" else "unknown"),
+                "model": self.adapters.agent.model,
+                "unguarded_mode": (run.unguarded_mode if run else None) or "ap"}
+               if lane == "unguarded" else
+               {key: value for key, value in {"provider": provider, "model": model}.items() if value is not None}),
+            "payload": payload,
         })
 
     async def _started(self, run: Run) -> None:
@@ -254,6 +225,7 @@ class RunManager:
 
     async def _unguarded(self, run: Run, batch: Batch) -> bool:
         failed = False
+        remittance_updates = {}
         for invoice in batch.invoices:
             try:
                 record = self.store.get_record("documents", invoice.document_id)
@@ -262,16 +234,26 @@ class RunManager:
                 document = DocumentText.model_validate(record["text"])
                 if document.invoice_id != invoice.invoice_id:
                     raise ValueError("Document identity mismatch")
+                supporting = supporting_documents_for_invoice(self.store, batch, invoice.invoice_id)
                 await self._event(run.run_id, "document.loaded", {
                     "invoice_id": invoice.invoice_id, "document_id": document.document_id,
                     "pages": len(document.pages), "line_count": sum(len(page.lines) for page in document.pages),
                 }, lane="unguarded")
+                for letter in supporting:
+                    await self._event(run.run_id, "document.loaded", {
+                        "invoice_id": invoice.invoice_id, "document_id": letter.document_id,
+                        "pages": len(letter.pages), "line_count": sum(len(page.lines) for page in letter.pages),
+                    }, lane="unguarded")
                 tools = UnguardedTools(self.store, self.bus, self.adapters.bank,
                     run_id=run.run_id, invoice_id=invoice.invoice_id, vendor_id=invoice.vendor_id,
-                    dry_run=self.settings.unguarded_dry_run, effective_mode=self._unguarded_mode)
+                    dry_run=self.settings.unguarded_dry_run, effective_mode=self._unguarded_mode,
+                    provider=getattr(self.adapters.agent, "provider", "offline" if self.adapters.agent.mode == "offline" else "unknown"),
+                    model=self.adapters.agent.model, unguarded_mode=run.unguarded_mode or "ap",
+                    remittance_updates=remittance_updates)
                 result = await UnguardedAgent(self.adapters.agent, tools, self.store, self.bus,
                     max_steps=self.settings.agent_max_steps).run(
-                        run_id=run.run_id, instruction=run.instruction, document=document)
+                        run_id=run.run_id, instruction=run.instruction, document=document,
+                        supporting_documents=supporting, unguarded_mode=run.unguarded_mode or "ap")
                 failed = failed or not result.completed
             except asyncio.CancelledError:
                 raise
@@ -291,9 +273,36 @@ class RunManager:
         documents = []
         table = HandleTable()
         try:
-            for position, invoice in enumerate(batch.invoices, 1):
-                progress = {"stage": "pdf_text"}
+            # Quarantine and authorization are separate boundaries. An
+            # available referenced source must be scanned even if its claimed
+            # invoice association will subsequently fail validation. Dedup only
+            # this scanner input; duplicate routing requests still fail closed.
+            quarantined_ids = set()
+            for reference in batch.supporting_documents or []:
+                record = self.store.get_record("documents", reference.document_id)
                 try:
+                    source_document = DocumentText.model_validate(record["text"]) if record else None
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if source_document is not None and source_document.document_id not in quarantined_ids:
+                    quarantined_ids.add(source_document.document_id)
+                    documents.append(source_document)
+            supporting_by_invoice = {}
+            requested_by_invoice = {}
+            for position, invoice in enumerate(batch.invoices, 1):
+                progress = {"stage": "span_verification"}
+                try:
+                    supporting = supporting_documents_for_invoice(self.store, batch, invoice.invoice_id)
+                    for letter in supporting:
+                        await self._event(run.run_id, "document.loaded", {
+                            "invoice_id": invoice.invoice_id, "document_id": letter.document_id,
+                            "pages": len(letter.pages), "line_count": sum(len(page.lines) for page in letter.pages),
+                        })
+                    if len(supporting) > 1:
+                        raise ValueError("Ambiguous supporting remittance requests")
+                    requested_by_invoice[invoice.invoice_id] = remittance_field(supporting[0]) if supporting else None
+                    supporting_by_invoice[invoice.invoice_id] = supporting
+                    progress["stage"] = "pdf_text"
                     await self._extract(run, invoice, position, table, documents, progress)
                 except asyncio.CancelledError:
                     raise
@@ -323,6 +332,18 @@ class RunManager:
                 result = interpreter.execute(plan.steps)
                 for intent in result.intents:
                     invoice = pending[intent.invoice_id]
+                    supporting = supporting_by_invoice[invoice.invoice_id]
+                    requested = requested_by_invoice[invoice.invoice_id]
+                    if requested is not None:
+                        # A letter is a requested routing change, not authority
+                        # to change the master. Submit its labeled account to
+                        # policy so a human reviews the outstanding request.
+                        # Keep original extraction and plan intact for audit.
+                        span = requested.span
+                        intent = replace(intent, to_account=Labeled(requested.value, {
+                            DocumentSpan(span.document_id, span.page, span.line,
+                                         span.char_start, span.char_end, span.span_verified),
+                        }))
                     alias = next(alias for alias, identity in table.invoices.items() if identity == invoice.invoice_id)
                     fields = {handle.name.split(".", 1)[1]: table.values[handle.name]
                               for handle in table.invoice_handles[alias]}
@@ -336,8 +357,9 @@ class RunManager:
                         matched_po=interpreter.match_po(alias, intent.vendor),
                         instruction_like_spans=flagged, field_values=fields,
                         trusted_instruction=run.instruction,
+                        supporting_documents=supporting,
                     )
-                    corroborated = self.policy.corroborate(intent)
+                    corroborated = self.policy.corroborate(intent, supporting_documents=supporting)
                     steps = [step for step in public_plan.steps if step.invoice_id == invoice.invoice_id]
                     try:
                         await self._apply_decision(run, invoice, tally, decision, intent=corroborated,
@@ -441,10 +463,44 @@ class RunManager:
         }) if raw else FieldsExtractedPayload(invoice_id=invoice.invoice_id,
             extractor_model=getattr(self.adapters.extractor, "model", self.settings.extractor_model),
             fields=[], handles=[], instruction_like_spans=[])
+        # Error holds must remain reviewable even when the supporting document
+        # itself was missing, malformed, duplicated or incorrectly associated.
+        # This tolerant path only builds evidence; authorization uses the strict
+        # loader and parser above before any intent can reach policy or the bank.
+        supporting, supporting_fields, references = [], [], []
+        batch_record = self.store.get_record("batches", run.batch_id)
+        if batch_record is not None:
+            batch = Batch.model_validate(batch_record)
+            references = [reference for reference in batch.supporting_documents or []
+                          if reference.invoice_id == invoice.invoice_id]
+            seen = {document.document_id}
+            for reference in references:
+                if reference.document_id in seen:
+                    continue
+                seen.add(reference.document_id)
+                record = self.store.get_record("documents", reference.document_id)
+                try:
+                    letter = DocumentText.model_validate(record["text"]) if record else None
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if (letter is None or letter.invoice_id != invoice.invoice_id
+                        or letter.document_id != reference.document_id):
+                    continue
+                supporting.append(letter)
+                try:
+                    supporting_fields.append(remittance_field(letter).model_copy(update={
+                        "name": "bank_change_remit_account_number",
+                    }))
+                except ValueError:
+                    continue
+        evidence_complete = len(supporting) == len(references) and len(supporting_fields) == len(supporting)
         graph = build_graph(
             run_id=run.run_id, invoice_id=invoice.invoice_id, document=document, extraction=extraction,
             steps=steps, decision=decision, intent=intent, vendors=self.store.list_records("vendors"),
             purchase_orders=self.store.list_records("purchase_orders"), action_status=action_status,
+            supporting_documents=supporting,
+            supporting_fields=supporting_fields,
+            action_detail={"supporting_evidence_complete": False} if not evidence_complete else None,
         )
         key = f"{run.run_id}:{invoice.invoice_id}"
         self.store.save_record("graphs", key, {"graph_id": key, **graph.model_dump(mode="json")})
@@ -545,7 +601,11 @@ class RunManager:
             "extraction_id": extraction_id, "run_id": run.run_id,
             **extraction.model_dump(mode="json"),
         })
-        await self._event(run.run_id, "fields.extracted", extraction.model_dump(mode="python"), mode=self.adapters.extractor.mode)
+        origin = extraction.extraction_provenance
+        await self._event(run.run_id, "fields.extracted", extraction.model_dump(mode="python"),
+                          mode=self.adapters.extractor.mode,
+                          provider=origin.provider if origin is not None else None,
+                          model=origin.model if origin is not None else None)
         progress["stage"] = "span_verification"
         if not _payment_inputs_verified(document, extraction, invoice):
             await self._event(run.run_id, "error", {

@@ -17,7 +17,7 @@ from app.main import create_app
 def application(tmp_path, monkeypatch):
     for field in Settings.model_fields:
         monkeypatch.delenv(field.upper(), raising=False)
-    settings = Settings(_env_file=None, nessie_mode="offline", elastic_mode="offline", extractor_mode="offline", planner_mode="offline", agent_mode="offline")
+    settings = Settings(_env_file=None, nessie_mode="offline", elastic_mode="offline", extractor_mode="offline", planner_mode="offline", agent_mode="offline", mutator_mode="offline")
     return create_app(settings, db_path=tmp_path / "data" / "test.db")
 
 
@@ -35,7 +35,7 @@ def test_health_lists_every_service_and_cors(application):
         response = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
         assert response.status_code == 200
         health = Health.model_validate(response.json())
-        assert set(health.services.model_dump()) == {"nessie", "elastic", "anthropic", "gemini", "bitdeer"}
+        assert set(health.services.model_dump()) == {"nessie", "elastic", "anthropic", "gemini", "bitdeer", "mutator"}
         for service in health.services.model_dump().values():
             assert service["status"] in {"ok", "offline", "missing_key", "error"}
             assert service["mode"] == "offline"

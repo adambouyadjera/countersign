@@ -1,4 +1,4 @@
-"""Select configured service modes without any network-error fallback."""
+"""Select explicit service modes and the configured quarantined extraction chain."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ from dataclasses import dataclass
 import httpx
 
 from app.config import Settings
+from app.adapters.extraction import ResilientExtractor
+from app.adapters.haiku_extractor import LiveHaikuExtractor
+from app.security.extraction_cache import ExtractionCache
 from app.adapters.implementations import (
     AuditEventStore,
     LiveAgentLLM,
@@ -39,11 +42,13 @@ class AdapterBundle:
 
     @property
     def health_services(self) -> dict[str, ServiceAdapter]:
-        # The agent and mutator share a single Bitdeer service configuration.
+        # Retain the v1 service key; adapter health detail identifies the actual
+        # independently configured unguarded provider and model.
         return {
             "nessie": self.bank, "elastic": self.audit,
             "anthropic": self.planner, "gemini": self.extractor,
             "bitdeer": self.agent,
+            "mutator": self.mutator,
         }
 
 
@@ -74,35 +79,41 @@ def build_adapters(
             auth="elastic", transport=transport,
         )
     )
-    extractor: ExtractorLLM = (
-        LiveExtractorLLM(
-            key=settings.gemini_api_key, model=settings.extractor_model, transport=transport,
-        ) if settings.extractor_mode == "live" else
-        OfflineExtractorLLM(
-            detail="EXTRACTOR_MODE=offline; deterministic invoice-layout parser.",
+    if settings.extractor_mode == "live":
+        cache = None
+        if settings.extractor_cache == "on":
+            # Mock transports and in-memory stores never read a real demo's
+            # extraction cache. Live application instances share the ignored DB.
+            cache = (ExtractionCache(":memory:") if transport is not None
+                     or str(getattr(store, "path", ":memory:")) == ":memory:" else ExtractionCache())
+        extractor: ExtractorLLM = ResilientExtractor(
+            LiveExtractorLLM(key=settings.gemini_api_key, model=settings.extractor_model, transport=transport),
+            LiveHaikuExtractor(key=settings.anthropic_api_key, model=settings.extractor_fallback_model, transport=transport),
+            store, cache=cache,
         )
-    )
+    else:
+        extractor = OfflineExtractorLLM(detail="EXTRACTOR_MODE=offline; deterministic invoice-layout parser.")
     planner: PlannerLLM = (
         LivePlannerLLM(
             key=settings.anthropic_api_key, model=settings.planner_model, transport=transport,
         ) if settings.planner_mode == "live" else OfflinePlannerLLM()
     )
+    naive = settings.naive_provider_config
     agent: AgentLLM = (
-        LiveAgentLLM(key=settings.bitdeer_api_key, base_url=settings.bitdeer_base_url,
-                     model=settings.naive_model, transport=transport)
+        LiveAgentLLM(key=naive.key, base_url=naive.base_url,
+                     model=naive.model, provider=naive.provider, transport=transport,
+                     request_interval_seconds=settings.naive_request_interval_seconds)
         if settings.agent_mode == "live" else OfflineAgentLLM()
     )
-    if settings.bitdeer_api_key.get_secret_value():
-        bitdeer = {
-            "key": settings.bitdeer_api_key, "key_name": "BITDEER_API_KEY",
-            "url": _endpoint(settings.bitdeer_base_url, "models"),
-            "auth": "bearer", "transport": transport,
-        }
-        mutator: MutatorLLM = LiveMutatorLLM(**bitdeer)
+    mutation = settings.mutator_provider_config
+    if settings.mutator_mode == "live":
+        mutator: MutatorLLM = LiveMutatorLLM(
+            key=mutation.key, base_url=mutation.base_url, model=mutation.model,
+            provider=mutation.provider, transport=transport,
+        )
     else:
         mutator = OfflineMutatorLLM(
-            detail="BITDEER_API_KEY is not configured; mutator uses an offline stub.",
-            missing_key=True,
+            detail="MUTATOR_MODE=offline; attack generation is not implemented in offline mode.",
         )
     return AdapterBundle(
         bank=bank, audit=audit, extractor=extractor,

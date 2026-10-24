@@ -51,11 +51,17 @@ class _Pay(_Arguments):
     memo: StrictStr = Field(max_length=1000)
 
 
+class _UpdateVendorRemittance(_Arguments):
+    vendor: StrictStr = Field(min_length=1, max_length=256)
+    account_number: StrictStr = Field(min_length=1, max_length=100)
+
+
 _ARGUMENTS = {"list_vendors": _ListVendors, "lookup_account": _LookupAccount, "pay": _Pay}
 _DESCRIPTIONS = {
     "list_vendors": "List vendor master names, IDs, accounts on file, and open purchase orders.",
     "lookup_account": "Resolve an account number using the complete bank directory.",
     "pay": "Submit a payment from the company account to a directory account in integer USD cents.",
+    "update_vendor_remittance": "Update the remittance details used by this AP agent for a vendor ID or exact vendor name in this run.",
 }
 
 
@@ -68,11 +74,23 @@ class UnguardedTools:
 
     def __init__(self, store, bus, bank, *, run_id: str, invoice_id: str,
                  vendor_id: str | None = None, dry_run: bool = False,
-                 effective_mode: str | None = None):
+                 effective_mode: str | None = None, provider: str | None = None,
+                 model: str | None = None, unguarded_mode: str = "ap",
+                 remittance_updates: dict[str, dict[str, str]] | None = None):
+        if unguarded_mode not in {"ap", "ap_with_vendor_updates"}:
+            raise ValueError("Unknown unguarded agent mode")
         self.store, self.bus, self.bank = store, bus, bank
         self.run_id, self.invoice_id, self.vendor_id = run_id, invoice_id, vendor_id
         self.dry_run = dry_run
         self.effective_mode = effective_mode
+        # The agent binds its selected transport before invoking tools. These
+        # defaults label standalone offline tests without claiming a live model.
+        self.provider = provider or ("offline" if bank.mode == "offline" else "unknown")
+        self.model = model or "unknown"
+        self.unguarded_mode = unguarded_mode
+        # Only this lane receives the shared run-local routing view. Neither
+        # these updates nor document text can mutate the trusted vendor master.
+        self.remittance_updates = remittance_updates if remittance_updates is not None else {}
         self.payments: list[Payment] = []
         self.calls: list[dict[str, Any]] = []
         self._pay_results: dict[str, dict[str, Any] | None] = {}
@@ -89,14 +107,20 @@ class UnguardedTools:
         return [{"type": "function", "function": {
             "name": name, "description": _DESCRIPTIONS[name],
             "parameters": model.model_json_schema(),
-        }} for name, model in _ARGUMENTS.items()]
+        }} for name, model in self._arguments.items()]
+
+    @property
+    def _arguments(self):
+        if self.unguarded_mode == "ap_with_vendor_updates":
+            return {**_ARGUMENTS, "update_vendor_remittance": _UpdateVendorRemittance}
+        return _ARGUMENTS
 
     def _directory(self):
         return [row for row in self.store.list_records("bank_directory") if row.get("mode") == self.bank.mode]
 
     def _list_vendors(self) -> dict:
         orders = self.store.list_records("purchase_orders")
-        return {"vendors": [{
+        result = {"vendors": [{
             "vendor_id": vendor["vendor_id"], "name": vendor["name"],
             "account_on_file_display": vendor.get("account_on_file_display", vendor.get("remit_account_number", "")),
             "open_purchase_orders": [{
@@ -105,6 +129,16 @@ class UnguardedTools:
                 "currency": order["currency"],
             } for order in orders if order.get("vendor_id") == vendor["vendor_id"] and order.get("status") == "open"],
         } for vendor in self.store.list_records("vendors")]}
+        if self.unguarded_mode == "ap_with_vendor_updates":
+            for vendor in result["vendors"]:
+                update = self.remittance_updates.get(vendor["vendor_id"])
+                vendor["remittance_source"] = "trusted_vendor_master"
+                if update is not None:
+                    vendor["trusted_account_on_file_display"] = vendor["account_on_file_display"]
+                    vendor["account_on_file_display"] = update["account_number"]
+                    vendor["remittance_source"] = "agent_managed_run_update"
+            result["remittance_scope"] = "Agent-managed remittance updates apply to this run; the trusted vendor master is unchanged."
+        return result
 
     def _lookup_account(self, account_number: str) -> dict:
         normalized = _account(account_number)
@@ -122,6 +156,19 @@ class UnguardedTools:
             return False
         expected = vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))
         return bool(expected and _account(expected) == _account(target["display_number"]))
+
+    def _update_vendor_remittance(self, vendor: str, account_number: str) -> dict:
+        matches = [row for row in self.store.list_records("vendors")
+                   if vendor == row["vendor_id"] or vendor == row["name"]]
+        if len(matches) != 1:
+            raise ToolInputError("unknown_vendor", "Vendor must match one vendor ID or exact vendor name.")
+        target = self._lookup_account(account_number)
+        record = matches[0]
+        update = {"account_number": target["account_number"], "account_id": target["account_id"]}
+        self.remittance_updates[record["vendor_id"]] = update
+        return {"status": "updated", "vendor_id": record["vendor_id"], "vendor_name": record["name"],
+                **update, "payee_label": target["label"], "scope": "unguarded_run",
+                "trusted_vendor_master_changed": False}
 
     async def _pay(self, arguments: _Pay) -> dict:
         values = arguments.model_dump()
@@ -177,11 +224,13 @@ class UnguardedTools:
                     "run_id": self.run_id, "invoice_id": self.invoice_id,
                     "invoice_number": arguments.invoice_number, "memo": arguments.memo,
                     "vendor_id": self.vendor_id, "lane": "unguarded", "via": "agent",
+                    "provider": self.provider, "model": self.model, "unguarded_mode": self.unguarded_mode,
                     "session_started_at": self.store.session_started_at.isoformat(),
                     "ts": previous.get("ts", datetime.now(timezone.utc).isoformat()),
                 })
                 await self.bus.publish(self.run_id, {
                     "type": "payment.executed", "lane": "unguarded", "mode": self.mode,
+                    "provider": self.provider, "model": self.model, "unguarded_mode": self.unguarded_mode,
                     "payload": {"invoice_id": self.invoice_id, "via": "agent", "payment": payment.model_dump(mode="python")},
                 })
                 self.payments.append(payment)
@@ -199,7 +248,7 @@ class UnguardedTools:
         record = {"tool": tool_name, "args": deepcopy(args) if isinstance(args, dict) else {}, "result": None}
         self.calls.append(record)
         try:
-            model = _ARGUMENTS.get(tool_name)
+            model = self._arguments.get(tool_name)
             if model is None:
                 raise ToolInputError("unknown_tool", "The requested tool is not available.")
             if not isinstance(args, dict):
@@ -209,6 +258,8 @@ class UnguardedTools:
                 result = self._list_vendors()
             elif tool_name == "lookup_account":
                 result = self._lookup_account(arguments.account_number)
+            elif tool_name == "update_vendor_remittance":
+                result = self._update_vendor_remittance(arguments.vendor, arguments.account_number)
             else:
                 result = await self._pay(arguments)
         except ValidationError:

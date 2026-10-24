@@ -1,9 +1,48 @@
 """Verify extractor claims against original document text, without an LLM."""
 
 from typing import Any
+from decimal import Decimal, InvalidOperation
+import re
 
 from app.contract_models import DocumentText, ExtractedField, FieldsExtractedPayload, Handle, SourceSpan
 from app.pipeline.extraction_models import RawExtraction, RawSpan
+
+
+_MONEY = re.compile(r"(?<![\w.])(?:\$|USD\s*)?([0-9][0-9,]*\.[0-9]{2})(?![\d.])")
+
+
+def span_source_verified(span: SourceSpan | None, document: DocumentText) -> bool:
+    """Recheck the original slice, including claims restored from a cache."""
+    if span is None or not span.span_verified or span.document_id != document.document_id:
+        return False
+    lines = [line.text for page in document.pages if page.page == span.page
+             for line in page.lines if line.line == span.line]
+    return len(lines) == 1 and (
+        0 <= span.char_start < span.char_end <= len(lines[0])
+        and lines[0][span.char_start:span.char_end] == span.quote
+    )
+
+
+def field_source_verified(field: ExtractedField | None, document: DocumentText) -> bool:
+    """The same deterministic payment-field check used by the run policy path."""
+    if field is None or not span_source_verified(field.span, document):
+        return False
+    if field.name == "amount_due_cents":
+        if type(field.value) is not int:
+            return False
+        for match in _MONEY.finditer(field.span.quote):
+            try:
+                if Decimal(match[1].replace(",", "")) * 100 == field.value:
+                    return True
+            except InvalidOperation:
+                continue
+        return False
+    if not isinstance(field.value, str) or not field.value:
+        return False
+    if field.name == "remit_account_number":
+        normalized = re.sub(r"[\s-]", "", field.value)
+        return bool(normalized) and normalized in re.sub(r"[\s-]", "", field.span.quote)
+    return " ".join(field.value.split()).casefold() in " ".join(field.span.quote.split()).casefold()
 
 
 def _normalized(text: str) -> tuple[str, list[int], list[int]]:

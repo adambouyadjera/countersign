@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from app.contract_models import Batch, BatchRequest, Balances, DocumentText, ErrorResponse
-from app.world.batches import create_standard_batch
+from app.world.batches import create_bank_change_batch, create_standard_batch
 
 
 router = APIRouter()
@@ -14,7 +14,8 @@ router = APIRouter()
 
 @router.post("/batches", response_model=Batch, operation_id="create_batch")
 async def create_batch(body: BatchRequest, request: Request) -> Batch:
-    return await run_in_threadpool(create_standard_batch, request.app.state.store)
+    factory = create_bank_change_batch if body.kind == "bank_change" else create_standard_batch
+    return await run_in_threadpool(factory, request.app.state.store)
 
 
 @router.get(

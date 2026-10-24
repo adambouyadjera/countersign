@@ -59,7 +59,12 @@ async def get_agent_transcript(run_id: str, invoice_id: str, request: Request) -
     record = store.get_record("agent_transcripts", f"{run_id}:{invoice_id}")
     if record is None:
         raise HTTPException(404, "Agent transcript is not available")
-    return AgentTranscript.model_validate({key: value for key, value in record.items() if key != "transcript_id"})
+    payload = {key: value for key, value in record.items() if key != "transcript_id"}
+    # Older runs predate provider recording. Never relabel historical calls
+    # using today's configured endpoint.
+    if not payload.get("provider"):
+        payload["provider"] = "legacy_unknown"
+    return AgentTranscript.model_validate(payload)
 
 
 @router.get("/runs/{run_id}/invoices/{invoice_id}/graph", response_model=ProvenanceGraph,

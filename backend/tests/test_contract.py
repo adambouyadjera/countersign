@@ -91,18 +91,94 @@ def test_openapi_is_valid(spec):
 def number_type_contract_request(spec):
     """Apply only the user's requested additive type change to read-only v1.
 
-    The contract owner must add ``number`` at these exact two enum locations.
+    The contract owner must add ``number`` at the two enum locations and the
+    optional provider identity and mode metadata requested for unguarded execution,
+    plus the separately selectable bank-change-letter batch and extraction
+    provider/cache provenance. The shared contracts remain read-only.
     All other endpoint and component schemas remain subject to exact parity.
     """
     expected = deepcopy(spec)
+    schemas = expected["components"]["schemas"]
+    schemas["ServicesHealth"]["properties"]["mutator"] = {"$ref": "#/components/schemas/ServiceHealth"}
     for name in ("ExtractedField", "Handle"):
         enum = expected["components"]["schemas"][name]["properties"]["type"]["enum"]
         assert enum == ["money", "date", "string", "account_number"]
         enum.append("number")
+    for event in expected["components"]["schemas"]["RunEvent"]["oneOf"]:
+        name = event["$ref"].rsplit("/", 1)[-1]
+        properties = expected["components"]["schemas"][name]["properties"]
+        properties["provider"] = {"title": "Provider", "type": "string"}
+        properties["model"] = {"title": "Model", "type": "string"}
+        properties["unguarded_mode"] = {
+            "enum": ["ap", "ap_with_vendor_updates"], "title": "Unguarded Mode", "type": "string",
+        }
+    expected["components"]["schemas"]["AgentTranscript"]["properties"]["provider"] = {
+        "title": "Provider", "type": "string",
+    }
+    for name in ("RunRequest", "Run", "AgentTranscript"):
+        schemas[name]["properties"]["unguarded_mode"] = {
+            "enum": ["ap", "ap_with_vendor_updates"], "title": "Unguarded Mode", "type": "string",
+        }
+    assert schemas["BatchRequest"]["properties"]["kind"] == {
+        "const": "standard", "title": "Kind", "type": "string",
+    }
+    schemas["BatchRequest"]["properties"]["kind"] = {
+        "enum": ["standard", "bank_change"], "title": "Kind", "type": "string",
+    }
+    assert schemas["Batch"]["properties"]["kind"]["enum"] == ["standard", "attack"]
+    schemas["Batch"]["properties"]["kind"]["enum"].append("bank_change")
+    schemas["Batch"]["properties"]["supporting_documents"] = {
+        "items": {"$ref": "#/components/schemas/SupportingDocument"},
+        "title": "Supporting Documents", "type": "array",
+    }
+    schemas["DocumentText"]["properties"]["document_type"] = {
+        "enum": ["invoice", "vendor_bank_change_letter"], "title": "Document Type", "type": "string",
+    }
+    schemas["SupportingDocument"] = {
+        "additionalProperties": False,
+        "properties": {
+            "document_id": {"title": "Document Id", "type": "string"},
+            "invoice_id": {"title": "Invoice Id", "type": "string"},
+            "vendor_id": {"title": "Vendor Id", "type": "string"},
+            "document_type": {"const": "vendor_bank_change_letter", "title": "Document Type", "type": "string"},
+        },
+        "required": ["document_id", "invoice_id", "vendor_id", "document_type"],
+        "title": "SupportingDocument", "type": "object",
+    }
+    schemas["FieldsExtractedPayload"]["properties"]["extraction_provenance"] = {
+        "$ref": "#/components/schemas/ExtractionProvenance",
+    }
+    schemas["ExtractionAttempt"] = {
+        "additionalProperties": False,
+        "properties": {
+            "provider": {"minLength": 1, "title": "Provider", "type": "string"},
+            "model": {"minLength": 1, "title": "Model", "type": "string"},
+            "outcome": {"enum": ["success", "failed", "skipped"], "title": "Outcome", "type": "string"},
+            "http_status": {"maximum": 599, "minimum": 100, "title": "Http Status", "type": "integer"},
+            "error_code": {"title": "Error Code", "type": "string"},
+        },
+        "required": ["provider", "model", "outcome"],
+        "title": "ExtractionAttempt", "type": "object",
+    }
+    schemas["ExtractionProvenance"] = {
+        "additionalProperties": False,
+        "properties": {
+            "provider": {"minLength": 1, "title": "Provider", "type": "string"},
+            "model": {"minLength": 1, "title": "Model", "type": "string"},
+            "extracted_at": {**deepcopy(schemas["Run"]["properties"]["created_at"]), "title": "Extracted At"},
+            "cached": {"title": "Cached", "type": "boolean"},
+            "document_sha256": {"pattern": "^[0-9a-f]{64}$", "title": "Document Sha256", "type": "string"},
+            "prompt_version": {"minLength": 1, "title": "Prompt Version", "type": "string"},
+            "cache_key": {"title": "Cache Key", "type": "string"},
+            "attempts": {"items": {"$ref": "#/components/schemas/ExtractionAttempt"}, "title": "Attempts", "type": "array"},
+        },
+        "required": ["provider", "model", "extracted_at", "cached", "document_sha256", "prompt_version"],
+        "title": "ExtractionProvenance", "type": "object",
+    }
     return expected
 
 
-def test_openapi_matches_models_except_requested_numeric_quantity_extension(spec):
+def test_openapi_matches_models_except_requested_additive_extensions(spec):
     generator = runpy.run_path(str(ROOT / "scripts" / "generate_openapi.py"))
     assert number_type_contract_request(spec) == generator["build_openapi"]()
 

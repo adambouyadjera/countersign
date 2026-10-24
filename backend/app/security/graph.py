@@ -13,7 +13,7 @@ import json
 from typing import Any
 
 from app.contract_models import (
-    DocumentText, FieldsExtractedPayload, GraphEdge, GraphNode, PlanStep,
+    DocumentText, ExtractedField, FieldsExtractedPayload, GraphEdge, GraphNode, PlanStep,
     PolicyDecision, ProvenanceGraph, SourceSpan,
 )
 from app.security.interpreter import PaymentIntent
@@ -36,6 +36,10 @@ def field_node_id(invoice_id: str, name: str) -> str:
     return _node_id("field", invoice_id, name)
 
 
+def supporting_field_node_id(invoice_id: str, document_id: str, name: str) -> str:
+    return _node_id("field", invoice_id, "supporting_document", document_id, name)
+
+
 def handle_node_id(invoice_id: str, handle_name: str) -> str:
     return _node_id("handle", invoice_id, handle_name)
 
@@ -46,6 +50,10 @@ def record_node_id(kind: str, record_id: str) -> str:
 
 def plan_node_id(invoice_id: str, step_id: str) -> str:
     return _node_id("plan", invoice_id, step_id)
+
+
+def extraction_node_id(invoice_id: str, document_id: str) -> str:
+    return _node_id("extraction", invoice_id, document_id)
 
 
 def check_node_id(invoice_id: str, code: str) -> str:
@@ -73,6 +81,8 @@ def build_graph(
     vendors: Sequence[Mapping[str, Any]] = (),
     purchase_orders: Sequence[Mapping[str, Any]] = (),
     action_status: str | None = None, action_detail: dict | None = None,
+    supporting_documents: Sequence[DocumentText] = (),
+    supporting_fields: Sequence[ExtractedField] = (),
 ) -> ProvenanceGraph:
     """Build from original source, stored extraction, and actual policy output.
 
@@ -83,10 +93,30 @@ def build_graph(
             or decision.invoice_id != invoice_id or decision.run_id != run_id
             or (intent is not None and intent.invoice_id != invoice_id)):
         raise ValueError("Graph evidence belongs to a different invoice or run")
+    if (any(item.invoice_id != invoice_id for item in supporting_documents)
+            or len({item.document_id for item in supporting_documents}) != len(supporting_documents)
+            or any(item.document_id == document.document_id for item in supporting_documents)):
+        raise ValueError("Supporting graph documents must belong to this invoice and have unique identifiers")
+    documents = {item.document_id: item for item in (document, *supporting_documents)}
+    supporting_ids = {item.document_id for item in supporting_documents}
+    if any(field.span is None or field.span.document_id not in supporting_ids
+           for field in supporting_fields):
+        raise ValueError("Supporting graph fields require a span in a supporting document")
     nodes: dict[str, GraphNode] = {}
     edges: dict[str, GraphEdge] = {}
     span_claims = [field.span for field in extraction.fields if field.span is not None]
     span_claims.extend(extraction.instruction_like_spans)
+    span_claims.extend(field.span for field in supporting_fields)
+    # A failed letter parser has no payment field to display. Preserve its
+    # available text as untrusted evidence instead of hiding the malformed
+    # source or requiring the parser to succeed again while recording a hold.
+    unparsed_support_spans = [SourceSpan(
+        document_id=item.document_id, page=page.page, line=line.line,
+        char_start=0, char_end=len(line.text), quote=line.text, span_verified=True,
+    ) for item in supporting_documents
+        if not any(field.span.document_id == item.document_id for field in supporting_fields)
+        for page in item.pages for line in page.lines if line.text]
+    span_claims.extend(unparsed_support_spans)
     records = {
         **{("vendor", row["vendor_id"]): row for row in vendors},
         **{("purchase_order", row["purchase_order_id"]): row for row in purchase_orders},
@@ -123,8 +153,9 @@ def build_graph(
                                  trust="trusted" if available else "none", detail=detail))
         claim = next((span for span in span_claims if _coordinates(span) == _coordinates(source)), None)
         quote = claim.quote if claim is not None else ""
-        if source.document_id == document.document_id:
-            for page in document.pages:
+        source_document = documents.get(source.document_id)
+        if source_document is not None:
+            for page in source_document.pages:
                 for line in page.lines:
                     if (page.page == source.page and line.line == source.line
                             and 0 <= source.char_start < source.char_end <= len(line.text)):
@@ -135,7 +166,9 @@ def build_graph(
                           span_verified=source.span_verified)
         return add(GraphNode(id=identifier, kind="span", label=quote or "Unverified source span",
                              trust="untrusted", span=span,
-                             detail={"span_verified": source.span_verified}))
+                             detail={"span_verified": source.span_verified,
+                                     **({"document_type": getattr(source_document, "document_type", None)}
+                                        if source_document is not None and source.document_id in supporting_ids else {})}))
 
     # Add sources first, including control dependencies and corroborating records.
     for span in span_claims:
@@ -150,11 +183,27 @@ def build_graph(
         if record_node_id(kind, record_id) in evidence_ids or record_id in trusted_refs:
             add_source(TrustedRecord(kind, record_id))
 
+    extraction_provenance = (
+        extraction.extraction_provenance.model_dump(mode="json")
+        if extraction.extraction_provenance is not None else None
+    )
+    extraction_id = None
+    if extraction_provenance is not None:
+        origin = extraction_provenance
+        extraction_id = add(GraphNode(
+            id=extraction_node_id(invoice_id, document.document_id), kind="plan_step",
+            label=f"Extraction: {origin['provider']}/{origin['model']} ({'cached' if origin['cached'] else 'fresh'})",
+            trust="none", detail={"operation": "quarantined_extraction", **origin},
+        ))
     fields = {field.name: field for field in extraction.fields}
     for field in extraction.fields:
         field_id = add(GraphNode(id=field_node_id(invoice_id, field.name), kind="field",
                                  label=field.name, trust="untrusted",
-                                 detail={"value": field.value, "type": field.type}))
+                                 detail={"value": field.value, "type": field.type,
+                                         **({"extraction_provenance": extraction_provenance}
+                                            if extraction_provenance is not None else {})}))
+        if extraction_id is not None:
+            edge(extraction_id, field_id, "derived_from", "untrusted")
         if field.span is not None:
             edge(source_node_id(field.span), field_id, "derived_from", "untrusted")
             # A verifier may downgrade a claimed true span on the execution
@@ -164,6 +213,22 @@ def build_graph(
                     if isinstance(source, DocumentSpan) and _coordinates(source) == _coordinates(field.span):
                         edge(add_source(source), field_id, "derived_from", "untrusted")
 
+    supporting_field_ids: list[tuple[ExtractedField, str]] = []
+    for field in supporting_fields:
+        field_id = add(GraphNode(
+            id=supporting_field_node_id(invoice_id, field.span.document_id, field.name),
+            kind="field", label=field.name, trust="untrusted",
+            detail={"value": field.value, "type": field.type,
+                    "document_id": field.span.document_id,
+                    "role": "requested_remittance", "vendor_master_updated": False},
+        ))
+        supporting_field_ids.append((field, field_id))
+        edge(source_node_id(field.span), field_id, "derived_from", "untrusted")
+        if intent is not None:
+            for source in intent.to_account.sources:
+                if isinstance(source, DocumentSpan) and _coordinates(source) == _coordinates(field.span):
+                    edge(add_source(source), field_id, "derived_from", "untrusted")
+
     handles = {handle.name: handle for handle in extraction.handles}
     payee_ok = any(check.code == "PAYEE_ON_FILE" and check.passed for check in decision.checks)
     corroborating = (
@@ -172,10 +237,17 @@ def build_graph(
     )
     for handle in extraction.handles:
         field_name = handle.name.partition(".")[2]
-        trust = "corroborated" if field_name == "remit_account_number" and corroborating else "untrusted"
+        field = fields.get(field_name)
+        account_was_checked = (intent is not None and field is not None and field.span is not None
+                               and any(isinstance(source, DocumentSpan)
+                                       and _coordinates(source) == _coordinates(field.span)
+                                       for source in intent.to_account.sources))
+        trust = "corroborated" if field_name == "remit_account_number" and corroborating and account_was_checked else "untrusted"
         handle_id = add(GraphNode(id=handle_node_id(invoice_id, handle.name), kind="handle",
                                   label=handle.name, trust=trust,
-                                  detail={"type": handle.type, "span_verified": handle.span_verified}))
+                                  detail={"type": handle.type, "span_verified": handle.span_verified,
+                                          **({"extraction_provenance": extraction_provenance}
+                                             if extraction_provenance is not None else {})}))
         if field_name in fields:
             edge(field_node_id(invoice_id, field_name), handle_id, "derived_from", "untrusted")
         if trust == "corroborated":
@@ -219,6 +291,12 @@ def build_graph(
                 raise ValueError("Policy evidence is absent from the provenance graph")
             evidence_trust = "trusted" if nodes[evidence].trust == "trusted" else "untrusted"
             edge(evidence, check_id, "checked_by", evidence_trust)
+        for field, field_id in supporting_field_ids:
+            if source_node_id(field.span) in check.evidence_node_ids:
+                edge(field_id, check_id, "checked_by", "untrusted")
+        if check.code == "SPAN_VERIFIED" and not check.passed:
+            for span in unparsed_support_spans:
+                edge(source_node_id(span), check_id, "checked_by", "untrusted")
         for handle in extraction.handles:
             if handle.name.partition(".")[2] in field_checks.get(check.code, set()):
                 trust = "corroborated" if nodes[handle_node_id(invoice_id, handle.name)].trust == "corroborated" else "untrusted"
@@ -248,7 +326,7 @@ def build_graph(
 
 
 def overlay_resolution(graph: ProvenanceGraph, events: Sequence, approvals: Sequence = ()) -> ProvenanceGraph:
-    """Reflect durable approval/payment results without rewriting source evidence."""
+    """Reflect Countersign resolutions without importing the other lane's actions."""
     graph = graph.model_copy(deep=True)
     action = next((node for node in graph.nodes if node.id == action_node_id(graph.invoice_id)), None)
     if action is None:
@@ -256,13 +334,15 @@ def overlay_resolution(graph: ProvenanceGraph, events: Sequence, approvals: Sequ
     detail = dict(action.detail or {})
     for record in approvals:
         if (record.get("run_id") != graph.run_id or record.get("invoice_id") != graph.invoice_id
-                or record.get("status") != "resolved"):
+                or record.get("status") != "resolved"
+                or record.get("lane", "countersign") != "countersign"):
             continue
         resolution = record.get("resolution", {})
         action.status = "rejected" if resolution.get("decision") == "reject" else "approved"
         detail.update({"approval_id": record["approval_id"], "resolution": resolution})
     for event in events:
-        if event.run_id != graph.run_id or getattr(event.payload, "invoice_id", None) != graph.invoice_id:
+        if (event.lane != "countersign" or event.run_id != graph.run_id
+                or getattr(event.payload, "invoice_id", None) != graph.invoice_id):
             continue
         if event.type == "approval.resolved":
             action.status = "rejected" if event.payload.decision == "reject" else "approved"
