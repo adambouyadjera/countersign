@@ -15,6 +15,7 @@ from app.adapters import (
     AgentLLM, AuditSink, BankAdapter, ExtractorLLM, HealthChecker,
     MutatorLLM, PlannerLLM, build_adapters,
 )
+from app.adapters.bank import BankError
 from app.config import Settings
 from app.contract_models import AuditAskRequest, RunEvent
 from app.store import Store
@@ -81,7 +82,7 @@ async def test_explicit_offline_modes_do_not_probe_even_with_keys(store):
     assert result.nessie.status == result.elastic.status == "offline"
     assert result.nessie.mode == result.elastic.mode == "offline"
     assert "SQLite only" in result.elastic.detail
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(BankError, match="Unknown offline"):
         await adapters.bank.transfer(from_account_id="from", to_account_id="to", amount_cents=1)
 
 

@@ -59,12 +59,11 @@ def build_adapters(
 ) -> AdapterBundle:
     """Build adapters; LLMs use missing-key offline stubs as explicitly requested."""
     bank: BankAdapter = (
-        OfflineBankAdapter(detail="NESSIE_MODE=offline; bank operations are not implemented.")
+        OfflineBankAdapter(store=store)
         if settings.nessie_mode == "offline" else
         LiveBankAdapter(
-            key=settings.nessie_api_key, key_name="NESSIE_API_KEY",
-            url=_endpoint(settings.nessie_base_url, "customers"),
-            auth="nessie", transport=transport,
+            key=settings.nessie_api_key, base_url=settings.nessie_base_url,
+            store=store, transport=transport,
         )
     )
     audit: AuditSink = (

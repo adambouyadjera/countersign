@@ -18,8 +18,12 @@ from app.contract_models import Run, RunEvent
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
 _EVENT_ADAPTER = TypeAdapter(RunEvent)
 _RECORD_TABLES = {
+    "companies": "company_id",
     "vendors": "vendor_id",
     "purchase_orders": "purchase_order_id",
+    "bank_directory": "display_number",
+    "bank_seeds": "seed_id",
+    "invoice_scoring": "invoice_id",
     "documents": "document_id",
     "batches": "batch_id",
     "runs": "run_id",
