@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -50,6 +51,11 @@ def create_standard_batch(store: Store) -> Batch:
             create_attack("hidden_white_text", ATTACKER_DISPLAY_NUMBER)
             if invoice_number == "INV-003" else None
         )
+        if attack is not None and attack.template == "hidden_white_text":
+            # The poisoned invoice makes an untrusted remittance claim in its
+            # data block as well as its note. The policy mismatch is therefore
+            # independently demonstrable even if instruction detection misses it.
+            spec = replace(spec, remit_account_number=ATTACKER_DISPLAY_NUMBER)
         pdf = generate_invoice(spec, attack=attack)
         document = extract_document(pdf, document_id, invoice_id)
         store.save_record("documents", document_id, {

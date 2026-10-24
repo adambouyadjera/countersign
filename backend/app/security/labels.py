@@ -49,6 +49,17 @@ class Labeled(Generic[T]):
     def map(self, operation: Callable[[T], U]) -> Labeled[U]:
         return Labeled(operation(self.value), self.sources)
 
+    @property
+    def trust(self) -> str:
+        """Describe retained provenance without discarding document taint."""
+        spans = [source for source in self.sources if isinstance(source, DocumentSpan)]
+        if any(not span.span_verified for span in spans):
+            return "untrusted"
+        trusted = any(isinstance(source, TrustedRecord) for source in self.sources)
+        if spans:
+            return "corroborated" if trusted else "untrusted"
+        return "trusted"
+
     @staticmethod
     def combine(operation: Callable[..., U], *values: Labeled) -> Labeled[U]:
         """Apply an operation, unioning labels even for a false/empty result."""

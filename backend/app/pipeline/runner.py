@@ -22,6 +22,10 @@ from app.contract_models import (
 )
 from app.pipeline.extractor import ExtractorError
 from app.pipeline.planner import propose
+from app.pipeline.payments import DuplicatePaymentError, PaymentExecutor, refresh_run_tallies
+from app.security.graph import build_graph
+from app.security.labels import DocumentSpan, Labeled
+from app.security.policy import PolicyEngine
 from app.security.handles import HandleTable
 from app.security.interpreter import Interpreter
 from app.security.leak_guard import ProvenanceLeakError
@@ -107,17 +111,19 @@ def _payment_inputs_verified(document, extraction, invoice) -> bool:
 class RunManager:
     """Keep background runs alive independently of the initiating HTTP request."""
 
-    def __init__(self, store, bus, adapters, settings):
+    def __init__(self, store, bus, adapters, settings, payment_executor=None):
         self.store = store
         self.bus = bus
         self.adapters = adapters
         self.settings = settings
+        self.payments = payment_executor or PaymentExecutor(store, bus, adapters.bank)
+        self.policy = PolicyEngine(store, amount_tolerance_cents=settings.policy_amount_tolerance_cents)
         self._tasks: dict[str, asyncio.Task] = {}
         self._closed = False
 
     @property
     def mode(self):
-        return "offline" if "offline" in {self.adapters.extractor.mode, self.adapters.planner.mode} else "live"
+        return "offline" if "offline" in {self.adapters.extractor.mode, self.adapters.planner.mode, self.adapters.bank.mode} else "live"
 
     def start(self, request: RunRequest) -> Run:
         if self._closed:
@@ -194,6 +200,9 @@ class RunManager:
         run.lanes = [RunLane(lane=lane.lane, status=final_status if lane.lane == "countersign" else "not_implemented") for lane in run.lanes]
         run.tallies = RunTallies(countersign=tally)
         self.store.save_run(run)
+        refreshed = refresh_run_tallies(self.store, run.run_id)
+        if refreshed is not None:
+            run.tallies = refreshed.tallies
         await self._event(run.run_id, "lane.status", {"status": final_status})
         await self._event(run.run_id, "run.completed", {"tallies": run.tallies.model_dump(mode="python")}, lane="system")
 
@@ -237,18 +246,41 @@ class RunManager:
                     for step in plan.steps
                 ]})
                 await self._event(run.run_id, "plan.proposed", public_plan.model_dump(mode="python"))
-                # The interpreter has no bank adapter. The B6 policy stub always
-                # holds intents; no LLM output can call a transfer in this lane.
-                result = Interpreter(table, vendors, purchase_orders).execute(plan.steps)
-                intents = {intent.invoice_id: intent for intent in result.intents}
+                # Programs produce intents. Only the deterministic policy gate
+                # can authorize the payment service to use a trusted destination.
+                interpreter = Interpreter(table, vendors, purchase_orders)
+                result = interpreter.execute(plan.steps)
+                for intent in result.intents:
+                    invoice = pending[intent.invoice_id]
+                    alias = next(alias for alias, identity in table.invoices.items() if identity == invoice.invoice_id)
+                    fields = {handle.name.split(".", 1)[1]: table.values[handle.name]
+                              for handle in table.invoice_handles[alias]}
+                    number = fields.get("invoice_number", Labeled("", {DocumentSpan(invoice.document_id, 0, 0, 0, 0, False)}))
+                    extraction = self.store.get_record("extractions", f"{run.run_id}:{invoice.invoice_id}")
+                    flagged = FieldsExtractedPayload.model_validate({
+                        key: value for key, value in extraction.items() if key not in {"run_id", "extraction_id"}
+                    }).instruction_like_spans
+                    decision = self.policy.evaluate(
+                        intent, run_id=run.run_id, invoice_number=number,
+                        matched_po=interpreter.match_po(alias, intent.vendor),
+                        instruction_like_spans=flagged, field_values=fields,
+                        trusted_instruction=run.instruction,
+                    )
+                    corroborated = self.policy.corroborate(intent)
+                    steps = [step for step in public_plan.steps if step.invoice_id == invoice.invoice_id]
+                    try:
+                        await self._apply_decision(run, invoice, tally, decision, intent=corroborated,
+                                                   steps=steps, invoice_number=str(number.value))
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as error:
+                        failed = True
+                        await self._processing_failed(run, invoice, tally, self._classify_failure(error, "nessie"))
+                    pending.pop(invoice.invoice_id, None)
                 for invoice_id, reasons in result.outcomes.items():
                     invoice = pending[invoice_id]
-                    intent = intents.get(invoice_id)
-                    await self._hold(
-                        run, invoice, tally, reasons,
-                        amount=intent.amount.value if intent else None,
-                        requested_account=str(intent.to_account.value) if intent else "",
-                    )
+                    await self._hold(run, invoice, tally, reasons,
+                                     steps=[step for step in public_plan.steps if step.invoice_id == invoice_id])
                     pending.pop(invoice_id)
         except asyncio.CancelledError:
             failed = True
@@ -324,29 +356,97 @@ class RunManager:
             evidence_node_ids=[],
         )])
 
-    async def _hold(self, run, invoice, tally, reasons, *, checks=None, amount=None, requested_account="") -> None:
-        vendor = self.store.get_record("vendors", invoice.vendor_id) or {}
-        approval_id = f"approval-{uuid4().hex}"
+    def _save_graph(self, run, invoice, decision, *, intent=None, steps=(), action_status=None):
+        source = self.store.get_record("documents", invoice.document_id)
+        try:
+            document = DocumentText.model_validate(source["text"]) if source else None
+        except (ValueError, KeyError):
+            document = None
+        if document is None:
+            document = DocumentText(document_id=invoice.document_id, invoice_id=invoice.invoice_id, pages=[])
+        raw = self.store.get_record("extractions", f"{run.run_id}:{invoice.invoice_id}")
+        extraction = FieldsExtractedPayload.model_validate({
+            key: value for key, value in raw.items() if key not in {"run_id", "extraction_id"}
+        }) if raw else FieldsExtractedPayload(invoice_id=invoice.invoice_id,
+            extractor_model=getattr(self.adapters.extractor, "model", self.settings.extractor_model),
+            fields=[], handles=[], instruction_like_spans=[])
+        graph = build_graph(
+            run_id=run.run_id, invoice_id=invoice.invoice_id, document=document, extraction=extraction,
+            steps=steps, decision=decision, intent=intent, vendors=self.store.list_records("vendors"),
+            purchase_orders=self.store.list_records("purchase_orders"), action_status=action_status,
+        )
+        key = f"{run.run_id}:{invoice.invoice_id}"
+        self.store.save_record("graphs", key, {"graph_id": key, **graph.model_dump(mode="json")})
+
+    async def _apply_decision(self, run, invoice, tally, decision, *, intent=None, steps=(), invoice_number=None):
+        vendor_id = intent.vendor.value.vendor_id if intent and intent.vendor.value is not None else invoice.vendor_id
+        vendor = self.store.get_record("vendors", vendor_id) or {}
+        amount = intent.amount.value if intent and type(intent.amount.value) is int else invoice.amount_cents
+        requested = str(intent.to_account.value) if intent else ""
+        if decision.outcome == "HOLD":
+            approval_id = f"approval-{uuid4().hex}"
+            decision.approval_id = approval_id
+            approval = Approval(
+                approval_id=approval_id, run_id=run.run_id, invoice_id=invoice.invoice_id,
+                invoice_number=invoice_number or invoice.invoice_number,
+                vendor_name=vendor.get("name", invoice.vendor_name), amount_cents=amount,
+                requested_account_display=requested,
+                account_on_file_display=str(vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))),
+                reason_codes=decision.reason_codes, status="pending", created_at=datetime.now(timezone.utc),
+                requested_by="person-ap-agent", required_role="ap_manager",
+            )
+            self.store.save_record("approvals", approval_id, approval)
+            self.store.save_record("approval_contexts", approval_id, {
+                "approval_id": approval_id, "run_id": run.run_id, "invoice_id": invoice.invoice_id,
+                "vendor_id": vendor_id, "invoice_number": approval.invoice_number,
+                "session_started_at": self.store.session_started_at.isoformat(), "decision_id": decision.decision_id,
+                "mode": self.mode,
+            })
+        self.store.save_record("decisions", decision.decision_id, decision)
+        self._save_graph(run, invoice, decision, intent=intent, steps=steps)
+        await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
+        if decision.outcome == "HOLD":
+            tally.held_count += 1
+            await self._event(run.run_id, "payment.held", {
+                "invoice_id": invoice.invoice_id, "approval_id": decision.approval_id,
+                "reason_codes": decision.reason_codes,
+            })
+        elif decision.outcome == "BLOCK":
+            tally.blocked_count += 1
+        else:
+            if intent is None or not vendor:
+                raise ValueError("Authorized intent is missing its trusted vendor")
+            trusted_account = str(vendor.get("account_on_file_display", vendor.get("remit_account_number", "")))
+            try:
+                payment = await self.payments.execute(
+                    run_id=run.run_id, invoice_id=invoice.invoice_id,
+                    invoice_number=invoice_number or invoice.invoice_number, vendor_id=vendor_id,
+                    amount_cents=amount, to_display_number=trusted_account, via="policy",
+                    effective_mode=self.mode,
+                )
+            except DuplicatePaymentError:
+                # The DB reservation closes the race between evaluation and I/O.
+                decision.outcome = "BLOCK"
+                decision.reason_codes = ["DUPLICATE_INVOICE"]
+                for check in decision.checks:
+                    if check.code == "NOT_DUPLICATE":
+                        check.passed = False
+                        check.message = "Another payment already reserved this invoice in this session."
+                self.store.save_record("decisions", decision.decision_id, decision)
+                self._save_graph(run, invoice, decision, intent=intent, steps=steps)
+                await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
+                tally.blocked_count += 1
+                return
+            tally.paid_count += 1
+            tally.paid_cents += payment.amount_cents
+            self._save_graph(run, invoice, decision, intent=intent, steps=steps, action_status="paid")
+
+    async def _hold(self, run, invoice, tally, reasons, *, checks=None, amount=None, requested_account="", steps=()):
         decision = PolicyDecision(
             decision_id=f"decision-{uuid4().hex}", run_id=run.run_id, invoice_id=invoice.invoice_id,
-            outcome="HOLD", reason_codes=reasons, approval_id=approval_id, checks=checks or [],
+            outcome="HOLD", reason_codes=reasons, checks=checks or [],
         )
-        self.store.save_record("decisions", decision.decision_id, decision)
-        await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
-        approval = Approval(
-            approval_id=approval_id, run_id=run.run_id, invoice_id=invoice.invoice_id,
-            invoice_number=invoice.invoice_number, vendor_name=vendor.get("name", invoice.vendor_name),
-            amount_cents=amount if type(amount) is int else invoice.amount_cents,
-            requested_account_display=requested_account,
-            account_on_file_display=str(vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))),
-            reason_codes=reasons, status="pending", created_at=datetime.now(timezone.utc),
-            requested_by="person-ap-agent", required_role="ap_manager",
-        )
-        self.store.save_record("approvals", approval_id, approval)
-        tally.held_count += 1
-        await self._event(run.run_id, "payment.held", {
-            "invoice_id": invoice.invoice_id, "approval_id": approval_id, "reason_codes": reasons,
-        })
+        await self._apply_decision(run, invoice, tally, decision, steps=steps)
 
     async def _extract(self, run, invoice, position, table, documents, progress):
         record = self.store.get_record("documents", invoice.document_id)
@@ -377,6 +477,9 @@ class RunManager:
         await self._event(run.run_id, "fields.extracted", extraction.model_dump(mode="python"), mode=self.adapters.extractor.mode)
         progress["stage"] = "span_verification"
         if not _payment_inputs_verified(document, extraction, invoice):
-            raise _InvoiceProcessingError("span_verification", "payment source verification failed (span_verification)")
+            await self._event(run.run_id, "error", {
+                "message": "payment source verification failed (span_verification)",
+                "recoverable": True, "invoice_id": invoice.invoice_id,
+            })
         table.add_invoice(document, extraction, position)
         return extraction

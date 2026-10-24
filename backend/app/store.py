@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -12,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from app.contract_models import PlannerTranscript, Run, RunEvent
+from app.contract_models import Person, PlannerTranscript, Run, RunEvent
 
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
@@ -32,10 +33,15 @@ _RECORD_TABLES = {
     "runs": "run_id",
     "decisions": "decision_id",
     "approvals": "approval_id",
+    "approval_contexts": "approval_id",
+    "approval_attempts": "approval_id",
+    "session_payment_claims": "claim_id",
+    "people": "person_id",
+    "graphs": "graph_id",
     "transfers": "transfer_id",
     "redteam_jobs": "job_id",
 }
-_RUN_SCOPED_TABLES = {"decisions", "approvals", "transfers"}
+_RUN_SCOPED_TABLES = {"decisions", "approvals", "transfers", "approval_contexts", "graphs"}
 
 
 def _event_data(event: RunEvent | Mapping[str, Any]) -> dict[str, Any]:
@@ -134,6 +140,9 @@ class Store:
             if transcript.run_id != record_id:
                 raise ValueError("record_id must match transcript.run_id")
             data = transcript.model_dump(mode="json")
+        elif table == "people":
+            # A null approval limit is a required, meaningful unlimited value.
+            data = Person.model_validate(record).model_dump(mode="json")
         encoded = json.dumps(data, separators=(",", ":"), allow_nan=False)
         key = _RECORD_TABLES[table]
         with self._lock:
@@ -170,6 +179,96 @@ class Store:
             cursor = self._db().execute(
                 "INSERT OR IGNORE INTO bank_payment_attempts (attempt_id, data) VALUES (?, ?)",
                 (attempt["attempt_id"], encoded),
+            )
+            return cursor.rowcount == 1
+
+    def _session_payment_key(self, invoice_number: str) -> str:
+        if not isinstance(invoice_number, str) or not invoice_number.strip():
+            raise ValueError("A nonempty invoice number is required")
+        identity = json.dumps([self.session_started_at.isoformat(), invoice_number.strip().casefold()])
+        return "invoice-payment-" + hashlib.sha256(identity.encode()).hexdigest()
+
+    def has_session_payment(self, invoice_number: str) -> bool:
+        """Include reservations and invoice-bound transfers from before B6.
+
+        Legacy runs did not create payment claims or always persist the invoice
+        number on the transfer. Their durable run/batch identity supplies that
+        number. Pending or otherwise unresolved submissions remain duplicates
+        until reconciliation; a missing new-style claim cannot authorize a
+        second payment.
+        """
+        if self.get_record("session_payment_claims", self._session_payment_key(invoice_number)) is not None:
+            return True
+        number = invoice_number.strip().casefold()
+        session = self.session_started_at.astimezone(timezone.utc)
+
+        def timestamp(value):
+            if not isinstance(value, str):
+                return None
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
+
+        for transfer in self.list_records("transfers"):
+            if "session_started_at" in transfer:
+                if timestamp(transfer["session_started_at"]) != session:
+                    continue
+            else:
+                created = timestamp(transfer.get("ts"))
+                if created is None or created < session:
+                    continue
+            bound_number = transfer.get("invoice_number")
+            if not isinstance(bound_number, str) or not bound_number.strip():
+                run_id, invoice_id = transfer.get("run_id"), transfer.get("invoice_id")
+                if not run_id or not invoice_id:
+                    continue
+                run = self.get_record("runs", run_id) or {}
+                batch = self.get_record("batches", run["batch_id"]) if run.get("batch_id") else None
+                matches = [invoice for invoice in (batch or {}).get("invoices", [])
+                           if invoice.get("invoice_id") == invoice_id]
+                if len(matches) != 1:
+                    continue
+                bound_number = matches[0].get("invoice_number")
+            if isinstance(bound_number, str) and bound_number.strip().casefold() == number:
+                return True
+        return False
+
+    def claim_session_payment(self, invoice_number: str, attempt_id: str) -> bool:
+        """Reserve an invoice exactly once across processes before a bank call."""
+        key = self._session_payment_key(invoice_number)
+        record = {"claim_id": key, "invoice_number": invoice_number,
+                  "session_started_at": self.session_started_at.isoformat(),
+                  "attempt_id": attempt_id, "state": "reserved"}
+        with self._lock:
+            if self.has_session_payment(invoice_number):
+                return False
+            cursor = self._db().execute(
+                "INSERT OR IGNORE INTO session_payment_claims (claim_id, data) VALUES (?, ?)",
+                (key, json.dumps(record, separators=(",", ":"))),
+            )
+            return cursor.rowcount == 1
+
+    def finish_session_payment(self, invoice_number: str, *, state: str, transfer_id: str | None = None) -> None:
+        key = self._session_payment_key(invoice_number)
+        with self._lock:
+            record = self.get_record("session_payment_claims", key)
+            if record is None:
+                raise ValueError("Payment reservation is missing")
+            record.update(state=state)
+            if transfer_id is not None:
+                record["transfer_id"] = transfer_id
+            self.save_record("session_payment_claims", key, record)
+
+    def claim_approval_resolution(self, approval_id: str, decision: str, actor_id: str) -> bool:
+        """A durable claim survives a timeout/crash, preventing double transfers."""
+        record = {"approval_id": approval_id, "decision": decision, "actor_id": actor_id,
+                  "state": "resolving", "started_at": datetime.now(timezone.utc).isoformat()}
+        with self._lock:
+            cursor = self._db().execute(
+                "INSERT OR IGNORE INTO approval_attempts (approval_id, data) VALUES (?, ?)",
+                (approval_id, json.dumps(record, separators=(",", ":"))),
             )
             return cursor.rowcount == 1
 
@@ -286,7 +385,8 @@ class Store:
             connection = self._db()
             connection.execute("BEGIN IMMEDIATE")
             try:
-                for table in ("events", "decisions", "approvals", "planner_transcripts", "runs"):
+                for table in ("events", "decisions", "approvals", "approval_contexts", "approval_attempts",
+                              "session_payment_claims", "graphs", "planner_transcripts", "runs"):
                     connection.execute(f"DELETE FROM {table}")
                 connection.execute(
                     "UPDATE metadata SET value = ? WHERE key = ?",

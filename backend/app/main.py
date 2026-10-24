@@ -13,13 +13,16 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import demo, health, runs, world
+from app.api import approvals, demo, health, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
 from app.store import Store
 from app.world.seed import seed_trusted_world, seed_world
 from app.pipeline.runner import RunManager
+from app.pipeline.approvals import ApprovalManager
+from app.pipeline.payments import PaymentExecutor
+from app.world.people import seed_people
 
 
 def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> JSONResponse:
@@ -68,9 +71,13 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         app.state.event_bus = EventBus(store)
         app.state.adapters = build_adapters(configuration, store)
         app.state.health_checker = HealthChecker(app.state.adapters)
-        app.state.run_manager = RunManager(store, app.state.event_bus, app.state.adapters, configuration)
+        app.state.payment_executor = PaymentExecutor(store, app.state.event_bus, app.state.adapters.bank)
+        app.state.approval_manager = ApprovalManager(store, app.state.event_bus, app.state.payment_executor)
+        app.state.run_manager = RunManager(store, app.state.event_bus, app.state.adapters, configuration,
+                                           app.state.payment_executor)
         try:
             seed_trusted_world(store)
+            seed_people(store)
             if configuration.nessie_mode == "offline":
                 await seed_world(store, app.state.adapters.bank)
             yield
@@ -119,6 +126,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(demo.router)
     api.include_router(runs.router)
     api.include_router(world.router)
+    api.include_router(approvals.router)
     app.include_router(api)
 
     # SSE uses a streaming response; register its discriminated data schema for docs.

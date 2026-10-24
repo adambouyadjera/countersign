@@ -40,7 +40,8 @@ async def test_real_planner_produces_valid_standard_batch_plan_and_handle_transc
             assert not any(step.op == "hold" and step.args["reason"].value == "PLANNER_INVALID"
                            for step in proposed[0].payload.steps)
             assert run.lanes[0].status == "completed"
-            assert run.tallies.countersign.paid_count == 0
+            assert run.tallies.countersign.paid_count == 4
+            assert run.tallies.countersign.held_count == 1
             for call in transcript.calls:
                 envelope = json.loads(call.prompt)
                 metadata = json.loads(envelope["messages"][0]["content"])

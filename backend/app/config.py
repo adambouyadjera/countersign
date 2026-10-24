@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 import json
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     planner_model: str = "claude-sonnet-5-5"
     planner_mode: Literal["live", "offline"] = "live"
+    policy_amount_tolerance_cents: int = Field(default=0, ge=0)
     gemini_api_key: SecretStr = SecretStr("")
     extractor_model: str = "gemini-3.5-flash-lite"
     extractor_mode: Literal["live", "offline"] = "live"
