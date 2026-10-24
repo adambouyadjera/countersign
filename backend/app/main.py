@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import approvals, attacks, demo, evidence, finance, health, runs, world
+from app.api import approvals, attacks, demo, evaluation, evidence, finance, health, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
@@ -27,6 +27,7 @@ from app.world.people import seed_people
 from app.books.ledger import Ledger
 from app.books.bookkeeper import Bookkeeper
 from app.books.reconciliation import Reconciler
+from app.evaluation.runner import EvalManager
 
 
 def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> JSONResponse:
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         app.state.approval_manager = ApprovalManager(store, app.state.event_bus, app.state.payment_executor)
         app.state.run_manager = RunManager(store, app.state.event_bus, app.state.adapters, configuration,
                                            app.state.payment_executor)
+        app.state.eval_manager = EvalManager(store, configuration)
         try:
             seed_trusted_world(store)
             seed_people(store, autonomy_limit_cents=configuration.agent_autonomy_limit_cents)
@@ -91,6 +93,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
                 await seed_world(store, app.state.adapters.bank)
             yield
         finally:
+            await app.state.eval_manager.close()
             await app.state.run_manager.close()
             close_extractor = getattr(app.state.adapters.extractor, "aclose", None)
             if close_extractor is not None:
@@ -153,6 +156,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(approvals.router)
     api.include_router(attacks.router)
     api.include_router(finance.router)
+    api.include_router(evaluation.router)
     api.include_router(evidence.router)
     app.include_router(api)
 

@@ -1,0 +1,13 @@
+{
+  "job_id": "eval-0188b35d6a2e426280f5999977d9054b",
+  "api_get_status": 200,
+  "items": 40,
+  "suite_hash_unchanged": true,
+  "decision_path_hashes_unchanged": true,
+  "planner_prompts_rechecked": 40,
+  "leak_guard_matches": 0,
+  "bank_calls": 0,
+  "submitted_transfers": 0,
+  "ledger_postings": 0,
+  "new_model_calls_during_verification": 0
+}

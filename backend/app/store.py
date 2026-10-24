@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from app.contract_models import AgentTranscript, Person, PlannerTranscript, Run, RunEvent
+from app.contract_models import AgentTranscript, EvalJob, Person, PlannerTranscript, Run, RunEvent
 
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
@@ -48,6 +48,10 @@ _RECORD_TABLES = {
     "graphs": "graph_id",
     "transfers": "transfer_id",
     "redteam_jobs": "job_id",
+    "eval_jobs": "job_id",
+    "eval_receipts": "receipt_id",
+    "eval_prior_paid": "prior_id",
+    "dry_run_intents": "intent_id",
 }
 _RUN_SCOPED_TABLES = {"decisions", "approvals", "transfers", "approval_contexts", "graphs", "agent_transcripts"}
 
@@ -173,6 +177,12 @@ class Store:
         elif table == "people":
             # A null approval limit is a required, meaningful unlimited value.
             data = Person.model_validate(record).model_dump(mode="json")
+        elif table == "eval_jobs":
+            # Clean answers have a required, explicitly null reason code.
+            job = EvalJob.model_validate(record)
+            if job.job_id != record_id:
+                raise ValueError("record_id must match job.job_id")
+            data = job.model_dump(mode="json")
         elif table == "agent_transcripts":
             transcript = AgentTranscript.model_validate({
                 key: value for key, value in data.items() if key != "transcript_id"
