@@ -5,11 +5,10 @@
  * docs/design/Combined.dc.html, `palettes.paper`. Names follow the mockup.
  */
 :root {
+  /* Palette: the "paper" palette (Paper & cobalt), unchanged in the refined design. */
   --bg: #f6f4ef;
   --panel: #ece8df;
-  /* Sig's speech cards are white in every mockup (CaseFile, AttackLab, Books, Eval, Audit). */
   --card: #ffffff;
-  --border: #d3cdc1;
   --text: #1a1c22;
   --muted: #5c5f68;
   --accent: #2448c8;
@@ -22,8 +21,34 @@
   --bad-bg: #fce9e6;
   --bad-border: #ebb4ac;
 
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --font-prose: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  /*
+   * Surfaces from docs/design/refined/README.md ("the important part").
+   * Every box is ink-outlined paper; untrusted content is dashed red.
+   */
+  --ink: var(--text);
+  --page-dot: #ded7c8;
+  --page-ground: radial-gradient(var(--page-dot) 1px, transparent 1.3px) 0 0 / 18px 18px, var(--bg);
+  --card-border: 1.5px solid var(--ink);
+  --card-radius: 8px;
+  --card-shadow: 3px 3px 0 #e2dccf;
+  --card-fold: linear-gradient(225deg, var(--bg) 0 12px, #d3cdc1 12px 13px, var(--card) 13px);
+  --tab-bg: var(--ink);
+  --tab-fg: var(--bg);
+  --untrusted-border: 1.5px dashed var(--bad);
+  --untrusted-shadow: 3px 3px 0 var(--bad-border);
+  --inner-border: 1.5px solid var(--ink);
+  --inner-bg: #fbfaf6;
+  --inner-shadow: 2px 2px 0 #e2dccf;
+  --rule-dashed: #c9c2b3;
+  --button-shadow: 3px 3px 0 var(--ink);
+  --bubble-bg: #eef2fd;
+  --bubble-border: 1.5px solid var(--accent);
+  --bubble-radius: 16px 16px 16px 3px;
+  --bubble-shadow: 3px 3px 0 #c9d5f7;
+
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-prose: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
 /* Tailwind utilities that resolve to the tokens above. */
@@ -31,7 +56,10 @@
   --color-bg: var(--bg);
   --color-panel: var(--panel);
   --color-card: var(--card);
-  --color-line: var(--border);
+  --color-ink: var(--ink);
+  --color-inner: var(--inner-bg);
+  --color-bubble: var(--bubble-bg);
+  --color-rule: var(--rule-dashed);
   --color-fg: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
@@ -47,6 +75,7 @@
   --font-mono: var(--font-mono);
   --font-sans: var(--font-prose);
   --font-prose: var(--font-prose);
+  --font-display: var(--font-display);
 
   /* The mockup's pixel sizes at the 14px root; they scale with the root on large screens. */
   --text-meta: 0.8572rem; /* 12px */
@@ -64,7 +93,7 @@
 
 @layer base {
   html {
-    background: var(--bg);
+    background: var(--page-ground);
     color: var(--text);
     font-family: var(--font-mono);
     font-size: 14px;
@@ -91,11 +120,35 @@
   }
 }
 
+@layer components {
+  /* Inputs, selects and textareas: inner-item ink outline with a soft shadow. */
+  .ink-field {
+    border: var(--inner-border);
+    border-radius: 6px;
+    background: var(--card);
+    box-shadow: var(--inner-shadow);
+  }
+  .ink-field:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
 @layer utilities {
   .tabular {
     font-variant-numeric: tabular-nums lining-nums;
   }
   /* Small uppercase section label, e.g. "INBOX · 5". */
+  /* Page titles and Sig's name. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+  }
+  /* Table row dividers: 1px dashed, never a grey solid line. */
+  .rule-dashed {
+    border-bottom: 1px dashed var(--rule-dashed);
+  }
   .eyebrow {
     font-family: var(--font-mono);
     font-size: var(--text-meta);

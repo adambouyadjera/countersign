@@ -15,11 +15,14 @@ Data honesty rules
 Mock mode (VITE_USE_MOCK=1) replays contracts/fixtures/ for development only and shows a visible MOCK DATA badge on every screen.
 With mock mode off, every number, status, transfer ID and graph node comes from the backend. No hardcoded results, no fake progress bars, no timers that pretend work is happening.
 If /api/health reports a service in offline mode, the UI labels it everywhere that service's data appears.
-Design direction: "notarial ledger"
-The product countersigns money movement, so the UI borrows from ledgers, legal documents and seals, not SaaS dashboards.
+Design direction: "Refined Paper & cobalt" with Sig
+The source of truth is frontend/docs/design/refined/ (read its README first); it supersedes frontend/docs/design/*.dc.html.
 
-Palette (CSS variables): --paper #F3EFE6, --paper-2 #E9E3D6, --ink #111A2B, --ink-soft #4A5468, --rule #C9C0AE, --verified #2F7D6D (verdigris), --taint #D23B2A (vermilion), --hold #B7791F (amber seal).
-Type: Instrument Serif for display headings; Inter Tight for UI text; IBM Plex Mono for amounts, account numbers, handles and IDs. Tabular numerals wherever money appears.
+Fonts: Bricolage Grotesque (display), Instrument Sans (body), Space Mono (labels, numbers, IDs, handles, Sig's face).
+Surfaces: ink-outlined paper cards (1.5px #1A1C22, folded corner, 3px offset shadow), dark label tabs, dashed red for anything untrusted, Sig speech bubbles in cobalt. No plain grey 1px boxes anywhere.
+The Attack Lab is the only dark page: "red team mode".
+Use the shared primitives in src/components/ui/ (Card, CardLabel, InkButton, Chip, SigSays); never hand-roll a box.
+
 Motifs: hairline ledger rules; handles like $INV-003.remit_account rendered as mono chips; untrusted data drawn with dashed vermilion "taint" edges, trusted with solid ink; held payments stamped with an amber seal.
 Motion is meaningful: values flow along graph edges, a stamp lands when a hold event arrives, the attacker balance ticks only when a real transfer event arrives. Respect prefers-reduced-motion.
 No generic dashboard template, no default component-library look, no purple gradients, no emoji.

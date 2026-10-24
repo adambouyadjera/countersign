@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { UseMutationResult } from '@tanstack/react-query'
 import type { Batch } from '@/api/types'
+import { Card, InkRow } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { formatCentsShort } from '@/lib/money'
 import type { InvoiceStatus } from '@/state/runReducer'
@@ -39,8 +40,12 @@ const GLYPH: Record<InvoiceStatus | 'none', { glyph: string; tone: string; word:
 
 export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, totals, controls }: InboxColumnProps) {
   return (
-    <aside aria-label="Inbox" className="flex min-h-0 flex-col gap-1.5 overflow-y-auto border-r border-line px-5 py-6">
-      <div className="eyebrow">inbox · {batch ? batch.invoices.length : 0}</div>
+    <Card
+      as="aside"
+      aria-label="Inbox"
+      label={`inbox · ${batch ? batch.invoices.length : 0}`}
+      className="my-[18px] ml-[18px] flex min-h-0 flex-col gap-1.5 overflow-y-auto px-4 py-[18px]"
+    >
 
       {newBatch.isError ? (
         <RequestError
@@ -59,16 +64,20 @@ export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, t
             const status = statuses ? (statuses[inv.invoice_id] ?? 'pending') : 'none'
             const g = GLYPH[status]
             const selected = inv.invoice_id === selectedId
+            // The picked row is an InkRow with the cobalt outline; the rest are bare until hovered.
+            const Row = selected ? InkRow : 'button'
             return (
               <li key={inv.invoice_id} data-invoice={inv.invoice_id} data-status={status}>
-                <button
+                <Row
+                  {...(selected ? { as: 'button', tone: 'selected' as const } : {})}
                   type="button"
                   onClick={() => onSelect(inv.invoice_id)}
                   aria-current={selected ? 'true' : undefined}
                   title={`${inv.vendor_name} · due ${inv.due_date}`}
                   className={cn(
-                    'flex w-full cursor-pointer items-baseline justify-between gap-2 rounded-[6px] border px-2.5 py-2 text-left font-[inherit] text-fg',
-                    selected ? 'border-accent bg-panel' : 'border-transparent bg-transparent hover:bg-panel/60',
+                    'flex w-full cursor-pointer items-baseline justify-between gap-2 rounded-[6px] px-2.5 py-2 text-left font-[inherit] text-fg',
+                    'focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid',
+                    !selected && 'border-[1.5px] border-transparent bg-transparent hover:bg-inner',
                   )}
                 >
                   <span className="min-w-0 truncate">
@@ -81,7 +90,7 @@ export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, t
                   <span className={cn('shrink-0 tabular', !selected && 'text-muted')}>
                     {formatCentsShort(inv.amount_cents)}
                   </span>
-                </button>
+                </Row>
               </li>
             )
           })}
@@ -108,6 +117,6 @@ export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, t
           'no run yet'
         )}
       </div>
-    </aside>
+    </Card>
   )
 }

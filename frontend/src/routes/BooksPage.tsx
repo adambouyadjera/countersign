@@ -2,14 +2,12 @@ import { useState } from 'react'
 import type { Approval, JournalEntry, Person } from '@/api/types'
 import { QueryView } from '@/components/casefile/Unavailable'
 import { SigSays } from '@/components/sig'
+import { Card, Chip, InkRow } from '@/components/ui'
 import { useApprovals, useJournal, usePeople, useReconciliation, useTrialBalance } from '@/hooks/queries'
 import { booksVerdict, journalNewestFirst, reconSummary, trialTotals } from '@/lib/books'
-import { cn } from '@/lib/cn'
 import { formatCents, formatCentsShort } from '@/lib/money'
 import { ROLE_LABEL } from '@/lib/roles'
 
-const CARD = 'rounded-[12px] border border-line bg-card'
-const EYEBROW = 'text-meta tracking-[0.08em] text-muted uppercase'
 const SHOWN = 3
 
 /** Amount without the "$", as in the mockup's ledger columns. */
@@ -24,21 +22,16 @@ function personName(people: readonly Person[], id: string): string {
 
 function Badge({ ok, children }: { ok: boolean; children: string }) {
   return (
-    <span
-      className={cn(
-        'rounded-[6px] border-2 px-2.5 py-0.5 font-mono font-bold',
-        ok ? 'border-good text-good' : 'border-bad bg-bad-bg text-bad',
-      )}
-    >
+    <Chip tone={ok ? 'good' : 'bad'} className="py-0.5 font-mono">
       {children}
-    </span>
+    </Chip>
   )
 }
 
 function EntryCard({ e, people }: { e: JournalEntry; people: readonly Person[] }) {
   const w = Math.max(...e.lines.map((l) => `${l.account_code} ${l.account_name}`.length))
   return (
-    <li data-entry={e.entry_id} className="rounded-[8px] border border-panel p-3 font-mono text-small">
+    <InkRow as="li" data-entry={e.entry_id} className="p-3 font-mono text-small">
       <div className="flex justify-between gap-3 font-prose">
         <strong className="min-w-0">{e.memo}</strong>
         <span className="shrink-0 text-muted">by {personName(people, e.created_by)}</span>
@@ -58,7 +51,7 @@ function EntryCard({ e, people }: { e: JournalEntry; people: readonly Person[] }
       <div className="mt-1.5 text-muted">
         {e.source.kind === 'payment' ? 'nessie' : e.source.kind} {e.source.id} · {e.date}
       </div>
-    </li>
+    </InkRow>
   )
 }
 
@@ -105,7 +98,7 @@ export function BooksPage() {
   return (
     <div className="flex flex-col font-prose">
       <div className="flex flex-wrap items-baseline gap-4 px-7 pt-5.5 pb-1.5">
-        <h1 className="m-0 text-[2rem] font-extrabold">
+        <h1 className="display m-0 text-[2rem]">
           {verdict.agree
             ? 'The books agree with the bank'
             : tb.data && rec.data
@@ -123,8 +116,7 @@ export function BooksPage() {
       </div>
 
       <div className="grid grid-cols-[minmax(0,30rem)_minmax(0,1fr)_clamp(18rem,25vw,25.72rem)] items-start gap-[18px] px-7 pt-4 pb-7">
-        <section aria-label="Trial balance" className={cn(CARD, 'overflow-x-auto p-[18px]')}>
-          <div className={cn(EYEBROW, 'mb-2.5')}>trial balance</div>
+        <Card as="section" aria-label="Trial balance" label="trial balance" className="flex flex-col overflow-x-auto p-[18px]">
           <QueryView query={tb} what="the trial balance" endpoint="GET /api/ledger/trial_balance">
             {(t) => {
               const tot = trialTotals(t)
@@ -132,7 +124,7 @@ export function BooksPage() {
                 <>
                   <table className="w-full border-collapse font-mono text-small">
                     <thead>
-                      <tr className="border-b border-line text-left text-muted">
+                      <tr className="border-b-2 border-ink text-left text-muted">
                         <th className="px-1.5 py-2 font-medium">Account</th>
                         <th className="px-1.5 py-2 text-right font-medium">Debit</th>
                         <th className="px-1.5 py-2 text-right font-medium">Credit</th>
@@ -140,7 +132,7 @@ export function BooksPage() {
                     </thead>
                     <tbody className="tabular">
                       {t.accounts.map((a) => (
-                        <tr key={a.account_code} className="border-b border-panel">
+                        <tr key={a.account_code} className="rule-dashed">
                           <td className="px-1.5 py-2">
                             {a.account_code} {a.account_name}
                           </td>
@@ -160,10 +152,9 @@ export function BooksPage() {
               )
             }}
           </QueryView>
-        </section>
+        </Card>
 
-        <section aria-label="Journal" className={cn(CARD, 'flex min-w-0 flex-col gap-2.5 p-[18px]')}>
-          <div className={EYEBROW}>journal · newest first</div>
+        <Card as="section" aria-label="Journal" label="journal · newest first" className="flex min-w-0 flex-col gap-2.5 p-[18px]">
           <QueryView query={journal} what="the journal" endpoint="GET /api/ledger/entries">
             {(entries) => {
               const sorted = journalNewestFirst(entries)
@@ -190,15 +181,14 @@ export function BooksPage() {
               )
             }}
           </QueryView>
-        </section>
+        </Card>
 
         <section aria-label="Bank reconciliation and controls" className="flex flex-col gap-4">
           <SigSays expression={verdict.expression}>
             <span data-testid="books-verdict">{verdict.line}</span>
           </SigSays>
 
-          <div className={cn(CARD, 'p-[18px]')}>
-            <div className={EYEBROW}>bank reconciliation</div>
+          <Card label="bank reconciliation" className="flex flex-col p-[18px]">
             <QueryView query={rec} what="the reconciliation" endpoint="GET /api/reconciliation">
               {(r) => {
                 const s = reconSummary(r)
@@ -235,15 +225,14 @@ export function BooksPage() {
                 )
               }}
             </QueryView>
-          </div>
+          </Card>
 
-          <div className={cn(CARD, 'flex flex-col gap-2 p-[18px]')}>
-            <div className={EYEBROW}>controls log</div>
+          <Card label="controls log" className="flex flex-col gap-2 p-[18px]">
             <QueryView query={people} what="people and limits" endpoint="GET /api/people">
               {(p) => <ControlsLog people={p} approvals={approvals.data ?? []} />}
             </QueryView>
             <div className="text-small text-muted">From GET /api/people and /api/approvals.</div>
-          </div>
+          </Card>
         </section>
       </div>
     </div>

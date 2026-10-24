@@ -4,7 +4,7 @@ import { askAudit } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { RequestError } from '@/components/console/RequestError'
 import { SigSays } from '@/components/sig'
-import { Button } from '@/components/ui'
+import { Card, Chip, InkButton, InkRow } from '@/components/ui'
 import { useHealth } from '@/hooks/useHealth'
 import { useRunEvents } from '@/hooks/useRunEvents'
 import { cn } from '@/lib/cn'
@@ -12,8 +12,6 @@ import { eventSummary } from '@/lib/eventLog'
 import { serviceWord } from '@/lib/serviceWord'
 import { useConsoleStore } from '@/state/consoleStore'
 
-const CARD = 'rounded-[12px] border border-line bg-card'
-const EYEBROW = 'text-meta tracking-[0.08em] text-muted uppercase'
 const LOG_SIZE = 12
 
 // Questions only: the auditor answers from the indexed event log.
@@ -40,7 +38,7 @@ export function AuditPage() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_clamp(20rem,28vw,30rem)] items-start gap-[22px] px-7 py-5.5 font-prose">
       <main className="flex min-w-0 flex-col gap-4">
-        <h1 className="m-0 text-[2rem] font-extrabold">Ask the auditor</h1>
+        <h1 className="display m-0 text-[2rem]">Ask the auditor</h1>
         <SigSays expression="calm">I don&apos;t grade my own homework. The auditor reads the event log on its own.</SigSays>
 
         <form
@@ -60,15 +58,17 @@ export function AuditPage() {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask about payments, holds, approvals…"
-            className="min-h-11 min-w-0 flex-1 rounded-[8px] border border-line bg-card px-3 font-[inherit] text-fg"
+            className="ink-field min-h-12 min-w-0 flex-1 px-3.5 font-[inherit] text-[1.0715rem] text-fg"
           />
-          <Button type="submit" disabled={!question.trim() || ask.isPending}>
+          <InkButton type="submit" className="min-h-12 px-[18px]" disabled={!question.trim() || ask.isPending}>
             {ask.isPending ? 'asking…' : 'Ask'}
-          </Button>
+          </InkButton>
         </form>
         <div className="flex flex-wrap gap-2">
           {SUGGESTIONS.map((s) => (
-            <button
+            <Chip
+              as="button"
+              pill
               key={s}
               type="button"
               onClick={() => {
@@ -76,10 +76,10 @@ export function AuditPage() {
                 submit(s)
               }}
               disabled={ask.isPending}
-              className="min-h-9 cursor-pointer rounded-[6px] border border-line bg-card px-2.5 font-[inherit] text-small text-fg"
+              className="min-h-9 text-small"
             >
               {s}
-            </button>
+            </Chip>
           ))}
         </div>
         {elastic && elastic.status !== 'ok' && (
@@ -90,7 +90,7 @@ export function AuditPage() {
         )}
 
         {offline503 ? (
-          <div role="alert" data-testid="elastic-offline" className="rounded-[12px] border border-bad-line bg-bad-bg p-4">
+          <InkRow tone="failed" role="alert" data-testid="elastic-offline" className="p-4">
             <p className="m-0 font-bold text-bad">Elastic is offline</p>
             <p className="m-0 text-small">
               The auditor runs on Elastic Agent Builder, so it can&apos;t answer right now. Countersign won&apos;t answer audit
@@ -99,7 +99,7 @@ export function AuditPage() {
             <p className="m-0 mt-1 font-mono text-meta text-muted">
               POST /api/audit/ask → 503 {isApiError(ask.error) && ask.error.code}: {ask.error?.message}
             </p>
-          </div>
+          </InkRow>
         ) : ask.isError ? (
           isApiError(ask.error) && ask.error.status === 404 ? (
             <p data-testid="not-available" className="m-0 text-small text-muted">
@@ -109,33 +109,37 @@ export function AuditPage() {
             <RequestError title="The auditor could not answer" error={ask.error} onRetry={() => submit(question)} />
           )
         ) : ask.data ? (
-          <article aria-label="Answer" className={cn(CARD, 'flex flex-col gap-3 p-[18px]')}>
-            <div className="leading-relaxed whitespace-pre-wrap">{ask.data.answer}</div>
+          <Card as="article" aria-label="Answer" className="flex flex-col gap-3.5 p-5">
+            <div className="text-lead leading-relaxed whitespace-pre-wrap">{ask.data.answer}</div>
             {ask.data.steps.map((s, i) => (
-              <details key={i} open={i === 0} className="rounded-[8px] border border-panel">
-                <summary className="cursor-pointer px-3 py-2 font-mono text-small">
+              <InkRow as="details" key={i} open={i === 0} className="px-3.5 py-2.5">
+                <summary className="cursor-pointer font-mono text-small">
                   step {i + 1} · {s.tool_id}
                   {s.row_count !== undefined && ` · ${s.row_count} ${s.row_count === 1 ? 'row' : 'rows'}`}
                 </summary>
                 {s.esql ? (
-                  <pre data-testid="esql" className="m-0 overflow-x-auto border-t border-panel bg-bg px-3 py-2 font-mono text-meta whitespace-pre-wrap">
+                  <pre data-testid="esql" className="m-0 mt-2.5 overflow-x-auto rounded-[6px] bg-bg p-3 font-mono text-meta leading-[1.7] whitespace-pre-wrap">
                     {s.esql.replaceAll(' | ', '\n| ')}
                   </pre>
                 ) : (
-                  <p className="m-0 border-t border-panel px-3 py-2 text-small text-muted">No ES|QL for this step.</p>
+                  <p className="m-0 mt-2.5 text-small text-muted">No ES|QL for this step.</p>
                 )}
-              </details>
+              </InkRow>
             ))}
             <div className="text-small text-muted">
               Answered by Elastic Agent Builder (agent <span className="font-mono">{ask.data.agent_id}</span>) from the indexed
               event log. Countersign never answers audit questions from its own model.
             </div>
-          </article>
+          </Card>
         ) : null}
       </main>
 
-      <aside aria-label="Event log" className={cn(CARD, 'flex flex-col gap-2 p-[18px]')}>
-        <div className={EYEBROW}>event log · {run ? 'current run, latest' : 'no run'}</div>
+      <Card
+        as="aside"
+        aria-label="Event log"
+        label={`event log · ${run ? 'current run, latest' : 'no run'}`}
+        className="flex flex-col gap-2 p-[18px]"
+      >
         {!run ? (
           <p className="m-0 text-small text-muted">Run a batch on the console to see its events here.</p>
         ) : latest.length === 0 ? (
@@ -145,17 +149,34 @@ export function AuditPage() {
             {latest.map((e) => {
               const s = eventSummary(e, label)
               return (
-                <li key={e.seq} data-seq={e.seq} className="grid grid-cols-[3ch_minmax(0,1fr)_auto] gap-2 border-b border-panel py-1.5 last:border-b-0">
+                <li
+                  key={e.seq}
+                  data-seq={e.seq}
+                  data-tone={s.tone}
+                  className={cn(
+                    'rule-dashed grid grid-cols-[3ch_minmax(0,1fr)_auto] gap-2 py-1.5 last:border-b-0',
+                    e.type === 'payment.held' && 'bg-bad-bg',
+                  )}
+                >
                   <span className="text-right text-muted">{e.seq}</span>
                   <span className="min-w-0 truncate">{s.what}</span>
-                  {s.tag && <span className="max-w-[12ch] truncate text-muted">{s.tag}</span>}
+                  {s.tag && (
+                    <span
+                      className={cn(
+                        'max-w-[12ch] truncate',
+                        s.tone === 'good' ? 'text-good' : s.tone === 'bad' ? 'text-bad' : 'text-muted',
+                      )}
+                    >
+                      {s.tag}
+                    </span>
+                  )}
                 </li>
               )
             })}
           </ol>
         )}
         {run && <p className="m-0 text-meta text-muted">From the run&apos;s event stream ({run.run_id}); the auditor queries the same events in Elastic.</p>}
-      </aside>
+      </Card>
     </div>
   )
 }

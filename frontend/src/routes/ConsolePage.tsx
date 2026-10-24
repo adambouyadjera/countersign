@@ -12,7 +12,7 @@ import { OneSentencePanel } from '@/components/console/OneSentencePanel'
 import { RequestError } from '@/components/console/RequestError'
 import { VendorHistoryLine } from '@/components/console/VendorHistoryLine'
 import { SigFace } from '@/components/sig'
-import { Button, Kbd } from '@/components/ui'
+import { InkButton, Kbd } from '@/components/ui'
 import { useRunEvents, type StreamStatus } from '@/hooks/useRunEvents'
 import { handleNamespaces, splitHandle } from '@/lib/handle'
 import { formatCents } from '@/lib/money'
@@ -170,13 +170,13 @@ export function ConsolePage() {
         totals={totals}
         controls={
           <>
-            <Button size="sm" variant="quiet" onClick={() => newBatch.mutate()} disabled={newBatch.isPending}>
+            <InkButton size="sm" variant="secondary" onClick={() => newBatch.mutate()} disabled={newBatch.isPending}>
               {newBatch.isPending ? 'drawing…' : 'new batch'}
-            </Button>
-            <Button size="sm" onClick={() => run_()} disabled={!canRun || runPending} aria-keyshortcuts="r">
+            </InkButton>
+            <InkButton size="sm" onClick={() => run_()} disabled={!canRun || runPending} aria-keyshortcuts="r">
               {runPending ? 'starting…' : run ? 'run again' : 'run batch'}
               <Kbd>R</Kbd>
-            </Button>
+            </InkButton>
           </>
         }
       />
@@ -185,8 +185,9 @@ export function ConsolePage() {
         <div className="flex items-start gap-[18px]">
           <SigFace size="large" expression={shownStatus === 'held' ? 'serious' : 'default'} />
           <div className="min-w-0 flex-1">
-            <h1 className="m-0 text-lead font-bold">
-              Sig <span className="font-normal text-muted">· AP clerk</span>
+            <h1 className="m-0 text-[1.357rem] leading-tight">
+              <span className="display">Sig</span>{' '}
+              <span className="font-display font-semibold text-muted">· AP clerk</span>
             </h1>
             <p className="m-0 truncate text-muted" data-testid="sig-status">
               {!batch

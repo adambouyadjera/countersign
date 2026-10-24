@@ -9,6 +9,8 @@ import { ProvenanceColumns } from '@/components/casefile/ProvenanceColumns'
 import { QueryView } from '@/components/casefile/Unavailable'
 import { VendorStrip } from '@/components/casefile/VendorStrip'
 import { SigSays } from '@/components/sig'
+import { Card, CardLabel, Chip } from '@/components/ui'
+import { chipClass } from '@/components/ui/chipStyle'
 import {
   useAgentTranscript,
   useApprovals,
@@ -27,8 +29,6 @@ import { caseColumns, connectedIds, decisionFromGraph, instructionSpanIds, type 
 import { cn } from '@/lib/cn'
 import { formatCents } from '@/lib/money'
 
-const CARD = 'rounded-[10px] border border-line bg-card'
-const EYEBROW = 'font-prose text-meta tracking-[0.08em] text-muted uppercase'
 
 const OUTCOME_WORD: Record<PolicyDecision['outcome'], string> = { ALLOW: 'PAID', HOLD: 'HELD', BLOCK: 'BLOCKED' }
 
@@ -99,22 +99,20 @@ export function CaseFilePage() {
   return (
     <div className="flex flex-col font-prose">
       <div className="flex flex-wrap items-baseline gap-4 px-7 pt-4.5 pb-1.5">
-        <h1 className="m-0 font-prose text-[1.857rem] font-extrabold">
+        <h1 className="display m-0 text-[1.857rem]">
           {invoice
             ? `${invoice.invoice_number} · ${invoice.vendor_name} · ${formatCents(invoice.amount_cents, invoice.currency)}`
             : `Case file · ${invoiceId}`}
         </h1>
         {decision && (
-          <span
+          <Chip
             data-testid="outcome-badge"
-            className={cn(
-              'rounded-[6px] border px-2.5 py-0.5 font-mono',
-              decision.outcome === 'ALLOW' ? 'border-good text-good' : 'border-bad-line bg-bad-bg text-bad',
-            )}
+            tone={decision.outcome === 'ALLOW' ? 'good' : 'untrusted'}
+            className="py-0.5 font-mono"
           >
             {OUTCOME_WORD[decision.outcome]}
             {(reasonCodes ?? approval?.reason_codes ?? []).map((c) => ` · ${c}`)}
-          </span>
+          </Chip>
         )}
         <nav aria-label="Lane" className="ml-auto flex gap-1.5 font-mono">
           {(['countersign', 'unguarded'] as const).map((l) => (
@@ -124,8 +122,10 @@ export function CaseFilePage() {
               replace
               aria-current={lane === l ? 'page' : undefined}
               className={cn(
-                'rounded-[6px] px-3 py-1.5 no-underline',
-                lane === l ? 'bg-accent text-on-accent' : 'border border-line text-fg',
+                'px-3 py-1.5 no-underline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid',
+                lane === l
+                  ? 'rounded-[6px] border-[1.5px] border-accent bg-accent text-on-accent'
+                  : chipClass(),
               )}
             >
               {l} lane
@@ -135,11 +135,11 @@ export function CaseFilePage() {
       </div>
 
       <div className="grid grid-cols-[clamp(17rem,24vw,25.72rem)_minmax(0,1fr)_clamp(17rem,24vw,25.72rem)] items-start gap-[18px] px-7 pt-3 pb-6">
-        <section aria-label="Document" className={cn(CARD, 'py-4')}>
-          <div className={cn(EYEBROW, 'px-4 pb-2')}>the invoice as received</div>
+        <Card as="section" aria-label="Document" className="py-4">
+          <CardLabel className="mx-4 mb-2.5">the invoice as received</CardLabel>
           {documentId ? (
             <div className="px-0">
-              <QueryView query={doc} what="the document" endpoint={`GET /api/documents/${documentId}`}>
+              <QueryView query={doc} what="the document" endpoint={`GET /api/documents/${documentId}`} className="mx-4">
                 {(d) => <DocumentViewer doc={d} spans={docSpans} selected={selectedLine} />}
               </QueryView>
             </div>
@@ -148,11 +148,10 @@ export function CaseFilePage() {
               {run.isPending || graph.isPending ? 'finding the document…' : 'No document id: the run, batch and graph are all unavailable.'}
             </p>
           )}
-        </section>
+        </Card>
 
         {lane === 'countersign' ? (
-          <section aria-label="Provenance graph" className={cn(CARD, 'flex flex-col gap-3 px-[18px] py-4')}>
-            <div className={EYEBROW}>where every value came from</div>
+          <Card as="section" aria-label="Provenance graph" label="where every value came from" className="flex flex-col gap-3 px-[18px] py-4">
             <QueryView query={graph} what="the provenance graph" endpoint={`GET /api/runs/${runId}/invoices/${invoiceId}/graph`}>
               {() =>
                 columns && (
@@ -180,10 +179,9 @@ export function CaseFilePage() {
             <div className="text-meta text-muted">
               Dashed red = came from untrusted text. Solid = trusted record. Click a node to highlight its line.
             </div>
-          </section>
+          </Card>
         ) : (
-          <section aria-label="Agent transcript" className={cn(CARD, 'flex flex-col gap-3 px-[18px] py-4')}>
-            <div className={EYEBROW}>what the unguarded agent did</div>
+          <Card as="section" aria-label="Agent transcript" label="what the unguarded agent did" className="flex flex-col gap-3 px-[18px] py-4">
             <QueryView
               query={agent}
               what="the agent transcript"
@@ -191,7 +189,7 @@ export function CaseFilePage() {
             >
               {(t) => <AgentTranscriptView transcript={t} />}
             </QueryView>
-          </section>
+          </Card>
         )}
 
         <section aria-label="Decision" className="flex flex-col gap-3.5">
@@ -205,8 +203,7 @@ export function CaseFilePage() {
             </span>
           </SigSays>
 
-          <div className={cn(CARD, 'p-4')}>
-            <div className={EYEBROW}>vendor history{invoice && ` · ${invoice.vendor_name}`}</div>
+          <Card label={`vendor history${invoice ? ` · ${invoice.vendor_name}` : ''}`} className="flex flex-col p-4">
             {invoice ? (
               <QueryView query={vendor} what="the vendor history" endpoint={`GET /api/vendors/${invoice.vendor_id}`}>
                 {(v) =>
@@ -218,10 +215,9 @@ export function CaseFilePage() {
             ) : (
               <p className="m-0 mt-2 text-small text-muted">Needs the invoice's vendor (GET /api/runs, /api/batches).</p>
             )}
-          </div>
+          </Card>
 
-          <div className={cn(CARD, 'flex flex-col gap-2.5 p-4')}>
-            <div className={EYEBROW}>countersign</div>
+          <Card label="countersign" className="flex flex-col gap-2.5 p-4">
             <QueryView query={approvals} what="approvals" endpoint="GET /api/approvals">
               {() =>
                 approval ? (
@@ -233,7 +229,7 @@ export function CaseFilePage() {
                 )
               }
             </QueryView>
-          </div>
+          </Card>
 
           <button
             type="button"

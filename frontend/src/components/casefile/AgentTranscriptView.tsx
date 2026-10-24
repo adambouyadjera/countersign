@@ -1,4 +1,5 @@
 import type { AgentTranscript } from '@/api/types'
+import { InkRow } from '@/components/ui'
 
 /** The unguarded lane: what the agent said and did, from GET .../agent_transcript. */
 export function AgentTranscriptView({ transcript }: { transcript: AgentTranscript }) {
@@ -8,7 +9,8 @@ export function AgentTranscriptView({ transcript }: { transcript: AgentTranscrip
       <ol aria-label="Agent transcript" className="m-0 flex list-none flex-col gap-3 p-0 font-mono text-small">
         {transcript.steps.map((s, i) =>
           s.kind === 'tool_call' ? (
-            <li key={i} data-step="tool_call" className="rounded-[8px] border border-bad-line bg-bad-bg px-3.5 py-2.5">
+            // The agent acting on what the invoice said: untrusted, so dashed red.
+            <InkRow as="li" tone="untrusted" key={i} data-step="tool_call" className="px-3.5 py-2.5">
               <div className="text-bad">
                 tool · <span className="font-bold">{s.tool}</span>
               </div>
@@ -22,7 +24,7 @@ export function AgentTranscriptView({ transcript }: { transcript: AgentTranscrip
               {s.result && (
                 <pre className="m-0 mt-1 font-mono text-meta break-all whitespace-pre-wrap text-muted">↳ {s.result}</pre>
               )}
-            </li>
+            </InkRow>
           ) : (
             <li key={i} data-step="message" className="grid grid-cols-[7ch_minmax(0,1fr)]">
               <span className="text-claim">agent</span>

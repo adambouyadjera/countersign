@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { resolveApproval } from '@/api/client'
 import type { Approval, ApprovalDecision, InvoiceSummary, Person, PolicyDecision } from '@/api/types'
-import { Button } from '@/components/ui'
+import { Card, InkButton } from '@/components/ui'
 import { useApprovals, usePeople, useVendor } from '@/hooks/queries'
 import { maskAccount } from '@/lib/account'
 import { summarizeVendor, timesText } from '@/lib/vendorHistory'
@@ -50,10 +50,7 @@ export function ApprovalCard({ runId, invoice, decision }: ApprovalCardProps) {
   const history = vendor.data ? summarizeVendor(vendor.data, people.data ?? []) : null
 
   return (
-    <article
-      aria-label={`Approval for ${invoice.invoice_number}`}
-      className="mt-auto flex flex-col gap-2.5 rounded-[12px] border border-line bg-panel p-4"
-    >
+    <Card as="article" aria-label={`Approval for ${invoice.invoice_number}`} className="mt-auto flex flex-col gap-2.5 p-4">
       {approvals.isError ? (
         <RequestError
           title="Could not read approvals"
@@ -88,16 +85,16 @@ export function ApprovalCard({ runId, invoice, decision }: ApprovalCardProps) {
           <div className="flex flex-wrap gap-2">
             {approval.status === 'pending' && (
               <>
-                <Button
+                <InkButton
                   onClick={() => resolve.mutate('pay_vendor_on_file')}
                   disabled={!approver || resolve.isPending}
                   title={!approver ? 'No approver with the required role (GET /api/people)' : undefined}
                 >
                   Pay account on file
-                </Button>
-                <Button variant="quiet" onClick={() => resolve.mutate('reject')} disabled={!approver || resolve.isPending}>
+                </InkButton>
+                <InkButton variant="secondary" onClick={() => resolve.mutate('reject')} disabled={!approver || resolve.isPending}>
                   Reject
-                </Button>
+                </InkButton>
               </>
             )}
             <Link to={caseHref} className="self-center text-accent">
@@ -107,6 +104,6 @@ export function ApprovalCard({ runId, invoice, decision }: ApprovalCardProps) {
           {resolve.isError && <RequestError title="Could not record the decision" error={resolve.error} />}
         </>
       )}
-    </article>
+    </Card>
   )
 }

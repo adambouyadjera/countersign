@@ -14,7 +14,7 @@ export interface SigPlaceholderProps {
 export function SigPlaceholder({ title, expression, what, children }: SigPlaceholderProps) {
   return (
     <div className="flex w-full max-w-[52rem] flex-col gap-5 px-8 py-7">
-      <h1 className="m-0 font-prose text-big font-extrabold">{title}</h1>
+      <h1 className="display m-0 text-big">{title}</h1>
       <SigSays expression={expression}>Not built yet. {what}</SigSays>
       {children}
     </div>
