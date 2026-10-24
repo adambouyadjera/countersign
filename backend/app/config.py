@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     anthropic_api_key: SecretStr = SecretStr("")
     planner_model: str = "claude-sonnet-5-5"
+    planner_mode: Literal["live", "offline"] = "live"
     gemini_api_key: SecretStr = SecretStr("")
     extractor_model: str = "gemini-3.5-flash-lite"
     extractor_mode: Literal["live", "offline"] = "live"

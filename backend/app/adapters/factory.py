@@ -84,14 +84,8 @@ def build_adapters(
     )
     planner: PlannerLLM = (
         LivePlannerLLM(
-            key=settings.anthropic_api_key, key_name="ANTHROPIC_API_KEY",
-            url="https://api.anthropic.com/v1/models",
-            auth="anthropic", transport=transport,
-        ) if settings.anthropic_api_key.get_secret_value() else
-        OfflinePlannerLLM(
-            detail="ANTHROPIC_API_KEY is not configured; planner uses an offline stub.",
-            missing_key=True,
-        )
+            key=settings.anthropic_api_key, model=settings.planner_model, transport=transport,
+        ) if settings.planner_mode == "live" else OfflinePlannerLLM()
     )
     if settings.bitdeer_api_key.get_secret_value():
         bitdeer = {

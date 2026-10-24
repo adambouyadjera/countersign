@@ -62,7 +62,7 @@ async def test_missing_keys_are_reported_without_network_and_protocols_match(sto
     assert set(result.model_dump()) == {"nessie", "elastic", "anthropic", "gemini", "bitdeer"}
     for name, health in result.model_dump().items():
         assert health["status"] == "missing_key"
-        assert health["mode"] == ("live" if name in {"nessie", "elastic", "gemini"} else "offline")
+        assert health["mode"] == ("live" if name in {"nessie", "elastic", "gemini", "anthropic"} else "offline")
         assert "not configured" in health["detail"]
     assert adapters.mutator.mode == "offline"
     with pytest.raises(NotImplementedError):
@@ -73,7 +73,7 @@ async def test_missing_keys_are_reported_without_network_and_protocols_match(sto
 async def test_explicit_offline_modes_do_not_probe_even_with_keys(store):
     adapters = build_adapters(
         settings(
-            nessie_mode="offline", elastic_mode="offline",
+            nessie_mode="offline", elastic_mode="offline", planner_mode="offline",
             nessie_api_key="synthetic-nessie-key", elastic_api_key="synthetic-elastic-key",
         ),
         store, transport=httpx.MockTransport(no_requests),
@@ -81,6 +81,7 @@ async def test_explicit_offline_modes_do_not_probe_even_with_keys(store):
     result = await HealthChecker(adapters).check()
     assert result.nessie.status == result.elastic.status == "offline"
     assert result.nessie.mode == result.elastic.mode == "offline"
+    assert result.anthropic.status == result.anthropic.mode == "offline"
     assert "SQLite only" in result.elastic.detail
     with pytest.raises(BankError, match="Unknown offline"):
         await adapters.bank.transfer(from_account_id="from", to_account_id="to", amount_cents=1)
