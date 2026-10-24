@@ -1,8 +1,9 @@
-# Proposed additive contract changes
+# Additive contract changes published in v1.2
 
-The backend implements these extensions; `contracts/` remains unchanged. The
-contract owner should add the following types and fields to CONTRACT.md and
-openapi.yaml. Existing v1 fixtures remain valid.
+These extensions are applied to CONTRACT.md and openapi.yaml in v1.2 under the
+user's one-time permission to edit `contracts/`. The proposal is retained here
+for the implementation history. Existing v1 fixtures remain valid. The replay
+endpoints and their generated real-evidence fixture are also part of v1.2.
 
 ```typescript
 type UnguardedMode = "ap" | "ap_with_vendor_updates";

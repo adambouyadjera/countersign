@@ -13,10 +13,11 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import approvals, demo, health, runs, world
+from app.api import approvals, demo, evidence, health, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
+from app.evidence import BankChangeEvidenceRepository
 from app.store import Store
 from app.world.seed import seed_trusted_world, seed_world
 from app.pipeline.runner import RunManager
@@ -59,7 +60,8 @@ class SafeErrorsMiddleware:
             await error_response(500, "internal", "Internal server error")(scope, receive, send)
 
 
-def create_app(settings: Settings | None = None, *, db_path: str | Path | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, db_path: str | Path | None = None,
+               evidence_dir: str | Path | None = None) -> FastAPI:
     configuration = settings if settings is not None else get_settings()
 
     @asynccontextmanager
@@ -88,7 +90,9 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
                 await close_extractor()
             store.close()
 
-    app = FastAPI(title="Countersign API", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="Countersign API", version="1.2.0", lifespan=lifespan)
+    app.state.evidence_repository = (BankChangeEvidenceRepository(Path(evidence_dir))
+                                     if evidence_dir is not None else BankChangeEvidenceRepository())
     app.add_middleware(SafeErrorsMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -130,6 +134,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(runs.router)
     api.include_router(world.router)
     api.include_router(approvals.router)
+    api.include_router(evidence.router)
     app.include_router(api)
 
     # SSE uses a streaming response; register its discriminated data schema for docs.

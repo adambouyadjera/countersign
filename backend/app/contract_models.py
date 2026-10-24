@@ -1,4 +1,4 @@
-"""Pydantic models for Countersign contract v1, including Hyphenate additions.
+"""Pydantic models for Countersign contract v1.2, including Hyphenate additions.
 
 These models describe transport data only. They do not call external services or
 make policy decisions. ``RunEvent`` is the discriminated SSE data union.
@@ -842,3 +842,96 @@ RunEvent = Annotated[
     RunCompletedEvent | LedgerPostedEvent | InboxReceivedEvent,
     Field(discriminator="type"),
 ]
+
+
+class ReplayModel(ContractModel):
+    provider: str
+    model: str
+
+
+class ReplayPayment(Payment):
+    invoice_id: str
+    invoice_number: str
+    vendor_id: str
+    vendor_name: str
+    currency: Currency
+    account_on_file_display: str = OptionalField()
+    ts: Timestamp
+    via: Literal["policy", "approval", "agent"]
+
+
+class ReplayHold(ContractModel):
+    invoice_id: str
+    invoice_number: str
+    vendor_id: str
+    vendor_name: str
+    amount_cents: StrictInt
+    currency: Currency
+    reason_codes: list[ReasonCode]
+    ts: Timestamp
+    account_on_file_display: str = OptionalField()
+    requested_account_display: str = OptionalField()
+    letter_account_display: str = OptionalField()
+    approval: Approval = OptionalField()
+
+
+class ReplayLetter(ContractModel):
+    document: DocumentText
+    text: str
+    vendor_id: str
+    vendor_name: str
+    requested_account_display: str
+    account_on_file_display: str = OptionalField()
+
+
+class ReplayLane(ContractModel):
+    lane: Lane
+    provider: str
+    model: str
+    model_role: Literal["agent", "planner"]
+    status: LaneStatus
+    tally: LaneTally
+    extraction_models: list[ReplayModel]
+    payments: list[ReplayPayment]
+    holds: list[ReplayHold]
+
+
+class ReplayLanes(ContractModel):
+    unguarded: ReplayLane
+    countersign: ReplayLane
+
+
+class ReplayCounts(ContractModel):
+    unguarded: LaneTally
+    countersign: LaneTally
+    letter_payment_count: StrictInt
+    countersign_held_correctly: StrictBool = OptionalField()
+
+
+class BankChangeReplaySummary(ContractModel):
+    recorded: Literal[True]
+    recorded_at: Timestamp
+    source_file: str
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    run_id: str
+    is_default: StrictBool
+    complete: StrictBool
+    status: str
+    unguarded_provider: str
+    unguarded_model: str
+    unguarded_mode: Literal["ap", "ap_with_vendor_updates"] = OptionalField()
+    summary: ReplayCounts
+    limitations: list[str]
+
+
+class BankChangeReplay(BankChangeReplaySummary):
+    run: Run
+    batch: Batch
+    letter: ReplayLetter = OptionalField()
+    lanes: ReplayLanes
+    leak_guard: LeakGuard = OptionalField()
+    events: list[RunEvent]
+    held_invoice_graph: ProvenanceGraph = OptionalField()
+    planner_transcript: PlannerTranscript = OptionalField()
+    transcripts: list[AgentTranscript]
+    evidence: dict[str, Any]

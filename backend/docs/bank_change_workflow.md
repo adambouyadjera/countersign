@@ -135,6 +135,35 @@ rebinding, original producer/timestamp retention, and visible cached graph/event
 labels are verified in unit and production-run-path tests. Successful results
 are stored in the ignored SQLite cache for subsequent identical-document use.
 
+## Read-only demo replay (contract v1.2)
+
+`GET /api/evidence/bank-change` lists saved runs, including failed/interrupted
+outcomes. It deduplicates the original Qwen copy and puts the default clean run
+first with `is_default: true`.
+
+`GET /api/evidence/bank-change/default` (or the explicit recorded run ID) returns
+the letter text and requested account, both lanes' payments and original Nessie
+IDs/statuses, on-file accounts, holds/approvals, ordered timestamped events,
+planner leak counts, and the held graph. Planner and accepted extraction models
+are labelled separately. `evidence` retains the full original snapshot.
+
+Every response record is labelled `recorded: true`, with `recorded_at` equal to
+its last original event timestamp and `source_file`/`source_sha256` identifying
+the input. These endpoints perform no live calls, store queries, transfers, or
+approval resolutions. Historical `live` modes and `pending` statuses refer to
+the recording. Missing data and the old graph defect are explicit in
+`limitations`; nothing is reconstructed from today's configuration.
+
+The frontend fixture is generated from the default real run through the same
+loader (no handwritten payment data):
+
+```sh
+.venv/bin/python scripts/generate_bank_change_replay.py
+```
+
+It writes `contracts/fixtures/bank_change_replay.json`. Restart the backend to
+register the new routes; the fixture itself needs no running server or keys.
+
 ## Recorded live run
 
 Provider `bitdeer`, model `Qwen/Qwen3.8-27B`, mode

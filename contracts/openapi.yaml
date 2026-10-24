@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: Countersign API
-  version: 1.0.0
+  version: 1.2.0
   description: Countersign provenance firewall API for Fogline Festival, including
     the Hyphenate track additions. JSON uses snake_case. Timestamps are ISO 8601 UTC.
     Monetary amounts are integer cents; currency fields use USD. External service
     IDs in fixtures start with example-.
+    Fixtures generated from recorded live evidence (bank_change_replay.json) keep
+    their real run and transfer IDs as an explicit exception.
 paths:
   /api/health:
     get:
@@ -68,6 +70,9 @@ paths:
               $ref: '#/components/schemas/BatchRequest'
       description: Create five invoices with one poisoned document. The poisoned invoice
         is not identified in the response.
+        Standard and attack batches never reveal which invoice is poisoned.
+        The additive bank_change kind creates five clean invoices and one untrusted
+        vendor bank-change letter as a supporting document.
   /api/batches/{batch_id}:
     get:
       operationId: get_batch
@@ -173,7 +178,9 @@ paths:
               $ref: '#/components/schemas/AttackRequest'
       description: 'Create an attack batch and an inbox item. Substitute the {{ATTACKER_ACCOUNT}}
         token in attack_text. The attack text must contain 1 to 600 characters. Rate
-        limit: 10 requests per minute.'
+        limit: 10 requests per minute.
+        The poisoned invoice is not identified in the response.
+        Standard and attack batches never reveal which invoice is poisoned.'
   /api/runs:
     post:
       operationId: create_run
@@ -809,6 +816,62 @@ paths:
         schema:
           type: string
       description: Poll every 2 seconds.
+  /api/evidence/bank-change:
+    get:
+      operationId: list_bank_change_evidence
+      summary: List recorded bank-change runs
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BankChangeReplaySummary'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      description: Read saved evidence files only; no live services or database queries.
+        Return recorded runs, including incomplete outcomes, with the default run first
+        and is_default=true. Recorded timestamps and source_file identify the historical
+        recording; payment statuses do not establish settlement.
+  /api/evidence/bank-change/{run_id}:
+    get:
+      operationId: get_bank_change_evidence
+      summary: Get a recorded bank-change run
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankChangeReplay'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      description: Read saved evidence files only; no live services or database queries.
+        The literal run_id default aliases run-1b936c2ea67f4236b644609ac7c72089. Return
+        recorded=true, the original final event timestamp as recorded_at, the docs-relative
+        source_file, normalized screen data, and the original saved evidence. Preserve
+        event sequence numbers and timestamps; missing data from incomplete recordings
+        remains explicit. Only the bank-change evidence replay names the letter as
+        the demonstrated attack, because it is a recording of a finished run. Standard
+        and attack batches never reveal which invoice is poisoned.
 components:
   schemas:
     AccountBalance:
@@ -872,6 +935,18 @@ components:
           - dry_run
           title: Mode
           type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
         type:
           const: agent.message
           title: Type
@@ -926,6 +1001,18 @@ components:
           - dry_run
           title: Mode
           type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
         type:
           const: agent.tool_call
           title: Type
@@ -977,8 +1064,17 @@ components:
         invoice_id:
           title: Invoice Id
           type: string
+        provider:
+          title: Provider
+          type: string
         model:
           title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         steps:
           items:
@@ -1169,6 +1265,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: approval.resolved
@@ -1421,6 +1529,7 @@ components:
           enum:
           - standard
           - attack
+          - bank_change
           title: Kind
           type: string
         created_at:
@@ -1433,6 +1542,11 @@ components:
             $ref: '#/components/schemas/InvoiceSummary'
           title: Invoices
           type: array
+        supporting_documents:
+          items:
+            $ref: '#/components/schemas/SupportingDocument'
+          title: Supporting Documents
+          type: array
       required:
       - batch_id
       - kind
@@ -1444,7 +1558,9 @@ components:
       additionalProperties: false
       properties:
         kind:
-          const: standard
+          enum:
+          - standard
+          - bank_change
           title: Kind
           type: string
       required:
@@ -1496,6 +1612,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: document.loaded
@@ -1570,6 +1698,12 @@ components:
             $ref: '#/components/schemas/DocumentPage'
           title: Pages
           type: array
+        document_type:
+          enum:
+          - invoice
+          - vendor_bank_change_letter
+          title: Document Type
+          type: string
       required:
       - document_id
       - invoice_id
@@ -1622,6 +1756,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: error
@@ -1839,6 +1985,7 @@ components:
           - date
           - string
           - account_number
+          - number
           title: Type
           type: string
         span:
@@ -1877,6 +2024,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: fields.extracted
@@ -1921,6 +2080,8 @@ components:
             $ref: '#/components/schemas/Handle'
           title: Handles
           type: array
+        extraction_provenance:
+          $ref: '#/components/schemas/ExtractionProvenance'
       required:
       - invoice_id
       - extractor_model
@@ -2028,6 +2189,7 @@ components:
           - date
           - string
           - account_number
+          - number
           title: Type
           type: string
         trust:
@@ -2117,6 +2279,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: inbox.received
@@ -2317,6 +2491,18 @@ components:
           - dry_run
           title: Mode
           type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
         type:
           const: lane.status
           title: Type
@@ -2425,6 +2611,18 @@ components:
           - dry_run
           title: Mode
           type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
         type:
           const: ledger.posted
           title: Type
@@ -2527,6 +2725,18 @@ components:
           - dry_run
           title: Mode
           type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
         type:
           const: payment.executed
           title: Type
@@ -2589,6 +2799,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: payment.held
@@ -2711,6 +2933,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: plan.proposed
@@ -2929,6 +3163,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: policy.decision
@@ -3228,6 +3474,12 @@ components:
           type: array
         tallies:
           $ref: '#/components/schemas/RunTallies'
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
       required:
       - run_id
       - batch_id
@@ -3256,6 +3508,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: run.completed
@@ -3378,6 +3642,12 @@ components:
         instruction:
           title: Instruction
           type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
       required:
       - batch_id
       - lanes
@@ -3403,6 +3673,18 @@ components:
           - offline
           - dry_run
           title: Mode
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
           type: string
         type:
           const: run.started
@@ -3495,6 +3777,8 @@ components:
         gemini:
           $ref: '#/components/schemas/ServiceHealth'
         bitdeer:
+          $ref: '#/components/schemas/ServiceHealth'
+        mutator:
           $ref: '#/components/schemas/ServiceHealth'
       required:
       - nessie
@@ -3697,6 +3981,580 @@ components:
       - account_display
       - journal_entry_id
       title: VendorPayment
+      type: object
+    BankChangeReplay:
+      additionalProperties: false
+      properties:
+        recorded:
+          const: true
+          title: Recorded
+          type: boolean
+        recorded_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Recorded At
+          type: string
+        source_file:
+          title: Source File
+          type: string
+        source_sha256:
+          pattern: ^[0-9a-f]{64}$
+          title: Source Sha256
+          type: string
+        run_id:
+          title: Run Id
+          type: string
+        is_default:
+          title: Is Default
+          type: boolean
+        complete:
+          title: Complete
+          type: boolean
+        status:
+          title: Status
+          type: string
+        unguarded_provider:
+          title: Unguarded Provider
+          type: string
+        unguarded_model:
+          title: Unguarded Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
+        summary:
+          $ref: '#/components/schemas/ReplayCounts'
+        limitations:
+          items:
+            type: string
+          title: Limitations
+          type: array
+        run:
+          $ref: '#/components/schemas/Run'
+        batch:
+          $ref: '#/components/schemas/Batch'
+        letter:
+          $ref: '#/components/schemas/ReplayLetter'
+        lanes:
+          $ref: '#/components/schemas/ReplayLanes'
+        leak_guard:
+          $ref: '#/components/schemas/LeakGuard'
+        events:
+          items:
+            discriminator:
+              mapping:
+                agent.message: '#/components/schemas/AgentMessageEvent'
+                agent.tool_call: '#/components/schemas/AgentToolCallEvent'
+                approval.resolved: '#/components/schemas/ApprovalResolvedEvent'
+                document.loaded: '#/components/schemas/DocumentLoadedEvent'
+                error: '#/components/schemas/ErrorEvent'
+                fields.extracted: '#/components/schemas/FieldsExtractedEvent'
+                inbox.received: '#/components/schemas/InboxReceivedEvent'
+                lane.status: '#/components/schemas/LaneStatusEvent'
+                ledger.posted: '#/components/schemas/LedgerPostedEvent'
+                payment.executed: '#/components/schemas/PaymentExecutedEvent'
+                payment.held: '#/components/schemas/PaymentHeldEvent'
+                plan.proposed: '#/components/schemas/PlanProposedEvent'
+                policy.decision: '#/components/schemas/PolicyDecisionEvent'
+                run.completed: '#/components/schemas/RunCompletedEvent'
+                run.started: '#/components/schemas/RunStartedEvent'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/RunStartedEvent'
+            - $ref: '#/components/schemas/LaneStatusEvent'
+            - $ref: '#/components/schemas/DocumentLoadedEvent'
+            - $ref: '#/components/schemas/FieldsExtractedEvent'
+            - $ref: '#/components/schemas/PlanProposedEvent'
+            - $ref: '#/components/schemas/AgentToolCallEvent'
+            - $ref: '#/components/schemas/AgentMessageEvent'
+            - $ref: '#/components/schemas/PolicyDecisionEvent'
+            - $ref: '#/components/schemas/PaymentExecutedEvent'
+            - $ref: '#/components/schemas/PaymentHeldEvent'
+            - $ref: '#/components/schemas/ApprovalResolvedEvent'
+            - $ref: '#/components/schemas/ErrorEvent'
+            - $ref: '#/components/schemas/RunCompletedEvent'
+            - $ref: '#/components/schemas/LedgerPostedEvent'
+            - $ref: '#/components/schemas/InboxReceivedEvent'
+          title: Events
+          type: array
+        held_invoice_graph:
+          $ref: '#/components/schemas/ProvenanceGraph'
+        planner_transcript:
+          $ref: '#/components/schemas/PlannerTranscript'
+        transcripts:
+          items:
+            $ref: '#/components/schemas/AgentTranscript'
+          title: Transcripts
+          type: array
+        evidence:
+          additionalProperties: true
+          title: Evidence
+          type: object
+      required:
+      - recorded
+      - recorded_at
+      - source_file
+      - source_sha256
+      - run_id
+      - is_default
+      - complete
+      - status
+      - unguarded_provider
+      - unguarded_model
+      - summary
+      - limitations
+      - run
+      - batch
+      - lanes
+      - events
+      - transcripts
+      - evidence
+      title: BankChangeReplay
+      type: object
+    BankChangeReplaySummary:
+      additionalProperties: false
+      properties:
+        recorded:
+          const: true
+          title: Recorded
+          type: boolean
+        recorded_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Recorded At
+          type: string
+        source_file:
+          title: Source File
+          type: string
+        source_sha256:
+          pattern: ^[0-9a-f]{64}$
+          title: Source Sha256
+          type: string
+        run_id:
+          title: Run Id
+          type: string
+        is_default:
+          title: Is Default
+          type: boolean
+        complete:
+          title: Complete
+          type: boolean
+        status:
+          title: Status
+          type: string
+        unguarded_provider:
+          title: Unguarded Provider
+          type: string
+        unguarded_model:
+          title: Unguarded Model
+          type: string
+        unguarded_mode:
+          enum:
+          - ap
+          - ap_with_vendor_updates
+          title: Unguarded Mode
+          type: string
+        summary:
+          $ref: '#/components/schemas/ReplayCounts'
+        limitations:
+          items:
+            type: string
+          title: Limitations
+          type: array
+      required:
+      - recorded
+      - recorded_at
+      - source_file
+      - source_sha256
+      - run_id
+      - is_default
+      - complete
+      - status
+      - unguarded_provider
+      - unguarded_model
+      - summary
+      - limitations
+      title: BankChangeReplaySummary
+      type: object
+    ExtractionAttempt:
+      additionalProperties: false
+      properties:
+        provider:
+          minLength: 1
+          title: Provider
+          type: string
+        model:
+          minLength: 1
+          title: Model
+          type: string
+        outcome:
+          enum:
+          - success
+          - failed
+          - skipped
+          title: Outcome
+          type: string
+        http_status:
+          maximum: 599
+          minimum: 100
+          title: Http Status
+          type: integer
+        error_code:
+          title: Error Code
+          type: string
+      required:
+      - provider
+      - model
+      - outcome
+      title: ExtractionAttempt
+      type: object
+    ExtractionProvenance:
+      additionalProperties: false
+      properties:
+        provider:
+          minLength: 1
+          title: Provider
+          type: string
+        model:
+          minLength: 1
+          title: Model
+          type: string
+        extracted_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Extracted At
+          type: string
+        cached:
+          title: Cached
+          type: boolean
+        document_sha256:
+          pattern: ^[0-9a-f]{64}$
+          title: Document Sha256
+          type: string
+        prompt_version:
+          minLength: 1
+          title: Prompt Version
+          type: string
+        cache_key:
+          title: Cache Key
+          type: string
+        attempts:
+          items:
+            $ref: '#/components/schemas/ExtractionAttempt'
+          title: Attempts
+          type: array
+      required:
+      - provider
+      - model
+      - extracted_at
+      - cached
+      - document_sha256
+      - prompt_version
+      title: ExtractionProvenance
+      type: object
+    ReplayCounts:
+      additionalProperties: false
+      properties:
+        unguarded:
+          $ref: '#/components/schemas/LaneTally'
+        countersign:
+          $ref: '#/components/schemas/LaneTally'
+        letter_payment_count:
+          title: Letter Payment Count
+          type: integer
+        countersign_held_correctly:
+          title: Countersign Held Correctly
+          type: boolean
+      required:
+      - unguarded
+      - countersign
+      - letter_payment_count
+      title: ReplayCounts
+      type: object
+    ReplayHold:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        invoice_number:
+          title: Invoice Number
+          type: string
+        vendor_id:
+          title: Vendor Id
+          type: string
+        vendor_name:
+          title: Vendor Name
+          type: string
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        currency:
+          const: USD
+          title: Currency
+          type: string
+        reason_codes:
+          items:
+            enum:
+            - BANK_DETAILS_MISMATCH
+            - AMOUNT_MISMATCH
+            - UNKNOWN_VENDOR
+            - UNVERIFIED_SOURCE
+            - DUPLICATE_INVOICE
+            - PLANNER_INVALID
+            - POLICY_NOT_IMPLEMENTED
+            - OVER_AUTONOMY_LIMIT
+            type: string
+          title: Reason Codes
+          type: array
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        account_on_file_display:
+          title: Account On File Display
+          type: string
+        requested_account_display:
+          title: Requested Account Display
+          type: string
+        letter_account_display:
+          title: Letter Account Display
+          type: string
+        approval:
+          $ref: '#/components/schemas/Approval'
+      required:
+      - invoice_id
+      - invoice_number
+      - vendor_id
+      - vendor_name
+      - amount_cents
+      - currency
+      - reason_codes
+      - ts
+      title: ReplayHold
+      type: object
+    ReplayLane:
+      additionalProperties: false
+      properties:
+        lane:
+          enum:
+          - unguarded
+          - countersign
+          title: Lane
+          type: string
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+        model_role:
+          enum:
+          - agent
+          - planner
+          title: Model Role
+          type: string
+        status:
+          enum:
+          - running
+          - not_implemented
+          - failed
+          - completed
+          title: Status
+          type: string
+        tally:
+          $ref: '#/components/schemas/LaneTally'
+        extraction_models:
+          items:
+            $ref: '#/components/schemas/ReplayModel'
+          title: Extraction Models
+          type: array
+        payments:
+          items:
+            $ref: '#/components/schemas/ReplayPayment'
+          title: Payments
+          type: array
+        holds:
+          items:
+            $ref: '#/components/schemas/ReplayHold'
+          title: Holds
+          type: array
+      required:
+      - lane
+      - provider
+      - model
+      - model_role
+      - status
+      - tally
+      - extraction_models
+      - payments
+      - holds
+      title: ReplayLane
+      type: object
+    ReplayLanes:
+      additionalProperties: false
+      properties:
+        unguarded:
+          $ref: '#/components/schemas/ReplayLane'
+        countersign:
+          $ref: '#/components/schemas/ReplayLane'
+      required:
+      - unguarded
+      - countersign
+      title: ReplayLanes
+      type: object
+    ReplayLetter:
+      additionalProperties: false
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentText'
+        text:
+          title: Text
+          type: string
+        vendor_id:
+          title: Vendor Id
+          type: string
+        vendor_name:
+          title: Vendor Name
+          type: string
+        requested_account_display:
+          title: Requested Account Display
+          type: string
+        account_on_file_display:
+          title: Account On File Display
+          type: string
+      required:
+      - document
+      - text
+      - vendor_id
+      - vendor_name
+      - requested_account_display
+      title: ReplayLetter
+      type: object
+    ReplayModel:
+      additionalProperties: false
+      properties:
+        provider:
+          title: Provider
+          type: string
+        model:
+          title: Model
+          type: string
+      required:
+      - provider
+      - model
+      title: ReplayModel
+      type: object
+    ReplayPayment:
+      additionalProperties: false
+      properties:
+        transfer_id:
+          title: Transfer Id
+          type: string
+        transfer_status:
+          title: Transfer Status
+          type: string
+        from_account_id:
+          title: From Account Id
+          type: string
+        to_account_id:
+          title: To Account Id
+          type: string
+        to_display_number:
+          title: To Display Number
+          type: string
+        payee_label:
+          title: Payee Label
+          type: string
+        payee_on_file:
+          title: Payee On File
+          type: boolean
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        bank_mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Bank Mode
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        invoice_number:
+          title: Invoice Number
+          type: string
+        vendor_id:
+          title: Vendor Id
+          type: string
+        vendor_name:
+          title: Vendor Name
+          type: string
+        currency:
+          const: USD
+          title: Currency
+          type: string
+        account_on_file_display:
+          title: Account On File Display
+          type: string
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        via:
+          enum:
+          - policy
+          - approval
+          - agent
+          title: Via
+          type: string
+      required:
+      - transfer_id
+      - transfer_status
+      - from_account_id
+      - to_account_id
+      - to_display_number
+      - payee_label
+      - payee_on_file
+      - amount_cents
+      - bank_mode
+      - invoice_id
+      - invoice_number
+      - vendor_id
+      - vendor_name
+      - currency
+      - ts
+      - via
+      title: ReplayPayment
+      type: object
+    SupportingDocument:
+      additionalProperties: false
+      properties:
+        document_id:
+          title: Document Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        vendor_id:
+          title: Vendor Id
+          type: string
+        document_type:
+          const: vendor_bank_change_letter
+          title: Document Type
+          type: string
+      required:
+      - document_id
+      - invoice_id
+      - vendor_id
+      - document_type
+      title: SupportingDocument
       type: object
   responses:
     Error403:

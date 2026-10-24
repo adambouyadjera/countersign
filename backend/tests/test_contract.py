@@ -1,4 +1,4 @@
-"""Offline checks for the shared API contract and its synthetic replay data."""
+"""Offline checks for contract v1.2, legacy fixtures, and recorded replay data."""
 
 from __future__ import annotations
 
@@ -55,6 +55,7 @@ FIXTURE_MODELS = {
     "inbox_request.json": models.InboxRequest,
     "demo_reset.json": models.ResetResponse,
     "error.json": models.ErrorResponse,
+    "bank_change_replay.json": models.BankChangeReplay,
 }
 
 
@@ -88,102 +89,58 @@ def test_openapi_is_valid(spec):
     validate_spec(spec)
 
 
-def number_type_contract_request(spec):
-    """Apply only the user's requested additive type change to read-only v1.
-
-    The contract owner must add ``number`` at the two enum locations and the
-    optional provider identity and mode metadata requested for unguarded execution,
-    plus the separately selectable bank-change-letter batch and extraction
-    provider/cache provenance. The shared contracts remain read-only.
-    All other endpoint and component schemas remain subject to exact parity.
-    """
-    expected = deepcopy(spec)
-    schemas = expected["components"]["schemas"]
-    schemas["ServicesHealth"]["properties"]["mutator"] = {"$ref": "#/components/schemas/ServiceHealth"}
-    for name in ("ExtractedField", "Handle"):
-        enum = expected["components"]["schemas"][name]["properties"]["type"]["enum"]
-        assert enum == ["money", "date", "string", "account_number"]
-        enum.append("number")
-    for event in expected["components"]["schemas"]["RunEvent"]["oneOf"]:
-        name = event["$ref"].rsplit("/", 1)[-1]
-        properties = expected["components"]["schemas"][name]["properties"]
-        properties["provider"] = {"title": "Provider", "type": "string"}
-        properties["model"] = {"title": "Model", "type": "string"}
-        properties["unguarded_mode"] = {
-            "enum": ["ap", "ap_with_vendor_updates"], "title": "Unguarded Mode", "type": "string",
-        }
-    expected["components"]["schemas"]["AgentTranscript"]["properties"]["provider"] = {
-        "title": "Provider", "type": "string",
-    }
-    for name in ("RunRequest", "Run", "AgentTranscript"):
-        schemas[name]["properties"]["unguarded_mode"] = {
-            "enum": ["ap", "ap_with_vendor_updates"], "title": "Unguarded Mode", "type": "string",
-        }
-    assert schemas["BatchRequest"]["properties"]["kind"] == {
-        "const": "standard", "title": "Kind", "type": "string",
-    }
-    schemas["BatchRequest"]["properties"]["kind"] = {
-        "enum": ["standard", "bank_change"], "title": "Kind", "type": "string",
-    }
-    assert schemas["Batch"]["properties"]["kind"]["enum"] == ["standard", "attack"]
-    schemas["Batch"]["properties"]["kind"]["enum"].append("bank_change")
-    schemas["Batch"]["properties"]["supporting_documents"] = {
-        "items": {"$ref": "#/components/schemas/SupportingDocument"},
-        "title": "Supporting Documents", "type": "array",
-    }
-    schemas["DocumentText"]["properties"]["document_type"] = {
-        "enum": ["invoice", "vendor_bank_change_letter"], "title": "Document Type", "type": "string",
-    }
-    schemas["SupportingDocument"] = {
-        "additionalProperties": False,
-        "properties": {
-            "document_id": {"title": "Document Id", "type": "string"},
-            "invoice_id": {"title": "Invoice Id", "type": "string"},
-            "vendor_id": {"title": "Vendor Id", "type": "string"},
-            "document_type": {"const": "vendor_bank_change_letter", "title": "Document Type", "type": "string"},
-        },
-        "required": ["document_id", "invoice_id", "vendor_id", "document_type"],
-        "title": "SupportingDocument", "type": "object",
-    }
-    schemas["FieldsExtractedPayload"]["properties"]["extraction_provenance"] = {
-        "$ref": "#/components/schemas/ExtractionProvenance",
-    }
-    schemas["ExtractionAttempt"] = {
-        "additionalProperties": False,
-        "properties": {
-            "provider": {"minLength": 1, "title": "Provider", "type": "string"},
-            "model": {"minLength": 1, "title": "Model", "type": "string"},
-            "outcome": {"enum": ["success", "failed", "skipped"], "title": "Outcome", "type": "string"},
-            "http_status": {"maximum": 599, "minimum": 100, "title": "Http Status", "type": "integer"},
-            "error_code": {"title": "Error Code", "type": "string"},
-        },
-        "required": ["provider", "model", "outcome"],
-        "title": "ExtractionAttempt", "type": "object",
-    }
-    schemas["ExtractionProvenance"] = {
-        "additionalProperties": False,
-        "properties": {
-            "provider": {"minLength": 1, "title": "Provider", "type": "string"},
-            "model": {"minLength": 1, "title": "Model", "type": "string"},
-            "extracted_at": {**deepcopy(schemas["Run"]["properties"]["created_at"]), "title": "Extracted At"},
-            "cached": {"title": "Cached", "type": "boolean"},
-            "document_sha256": {"pattern": "^[0-9a-f]{64}$", "title": "Document Sha256", "type": "string"},
-            "prompt_version": {"minLength": 1, "title": "Prompt Version", "type": "string"},
-            "cache_key": {"title": "Cache Key", "type": "string"},
-            "attempts": {"items": {"$ref": "#/components/schemas/ExtractionAttempt"}, "title": "Attempts", "type": "array"},
-        },
-        "required": ["provider", "model", "extracted_at", "cached", "document_sha256", "prompt_version"],
-        "title": "ExtractionProvenance", "type": "object",
-    }
-    return expected
-
-
-def test_openapi_matches_models_except_requested_additive_extensions(spec):
+def test_openapi_matches_models_exactly(spec):
     generator = runpy.run_path(str(ROOT / "scripts" / "generate_openapi.py"))
-    assert number_type_contract_request(spec) == generator["build_openapi"]()
+    assert spec == generator["build_openapi"]()
 
 
-def test_numeric_quantity_wire_type_matches_explicit_contract_change_request(spec):
+def test_contract_v12_publishes_optional_extensions(spec):
+    assert spec["info"]["version"] == "1.2.0"
+    contract = (ROOT / "contracts" / "CONTRACT.md").read_text()
+    assert "v1.2" in contract
+    schemas = spec["components"]["schemas"]
+    extensions = {
+        "ServicesHealth": ("mutator",),
+        "Batch": ("supporting_documents",),
+        "DocumentText": ("document_type",),
+        "RunRequest": ("unguarded_mode",),
+        "Run": ("unguarded_mode",),
+        "AgentTranscript": ("provider", "unguarded_mode"),
+        "FieldsExtractedPayload": ("extraction_provenance",),
+    }
+    for event in schemas["RunEvent"]["oneOf"]:
+        extensions[event["$ref"].rsplit("/", 1)[-1]] = (
+            "provider", "model", "unguarded_mode",
+        )
+    for name, fields in extensions.items():
+        for field in fields:
+            assert field in schemas[name]["properties"]
+            assert field not in schemas[name].get("required", [])
+    assert schemas["BatchRequest"]["properties"]["kind"]["enum"] == ["standard", "bank_change"]
+    assert schemas["Batch"]["properties"]["kind"]["enum"] == ["standard", "attack", "bank_change"]
+
+
+def test_contract_preserves_poison_nondisclosure_and_recorded_replay_exception(spec):
+    contract = (ROOT / "contracts" / "CONTRACT.md").read_text()
+    assert "Five invoices, one poisoned (which one is never exposed)" in contract
+    assert "Standard and attack batches never reveal which invoice is poisoned." in contract
+    for path in ("/api/batches", "/api/attacks"):
+        assert "is not identified in the response" in spec["paths"][path]["post"]["description"]
+    replay_description = spec["paths"]["/api/evidence/bank-change/{run_id}"]["get"]["description"]
+    for text in (contract, replay_description):
+        assert "Only the bank-change evidence replay names the letter" in text
+        assert "finished run" in text
+
+
+def test_contract_preserves_synthetic_fixture_ids_with_explicit_recording_exception(spec):
+    contract = (ROOT / "contracts" / "CONTRACT.md").read_text()
+    for text in (contract, spec["info"]["description"]):
+        assert "IDs in fixtures start with example-." in text
+        assert "bank_change_replay.json" in text
+        assert "real run and transfer IDs" in text
+
+
+def test_numeric_quantity_wire_type_is_published(spec):
     quantity = models.ExtractedField(
         name="line_items.0.quantity", value=1.5, type="number", span=None,
         trust="untrusted",
@@ -193,12 +150,10 @@ def test_numeric_quantity_wire_type_matches_explicit_contract_change_request(spe
         span_verified=False,
     )
     assert type(quantity.model_dump(mode="json")["value"]) is float
-    proposed = number_type_contract_request(spec)
     for name, record in (("ExtractedField", quantity), ("Handle", handle)):
         schema = {"$ref": f"#/components/schemas/{name}"}
         wire = record.model_dump(mode="json")
-        assert not schema_validator(spec, schema).is_valid(wire)
-        schema_validator(proposed, schema).validate(wire)
+        schema_validator(spec, schema).validate(wire)
 
 
 def test_every_specified_endpoint_and_only_those_endpoints_exist(spec):
@@ -208,7 +163,7 @@ def test_every_specified_endpoint_and_only_those_endpoints_exist(spec):
         for method, path in re.findall(r"^(GET|POST) (/api/\S+)", contract, re.MULTILINE)
     }
     actual = {(method, path) for path, operations in spec["paths"].items() for method in operations}
-    assert len(expected) == 32
+    assert len(expected) == 34
     assert actual == expected
 
 
