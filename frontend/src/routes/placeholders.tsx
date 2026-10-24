@@ -1,20 +1,5 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { SigPlaceholder } from '@/components/sig'
-
-export function CaseFilePage() {
-  const { runId, invoiceId } = useParams()
-  return (
-    <SigPlaceholder
-      title="Case file"
-      expression="serious"
-      what="This page will trace every value behind one payment back to a trusted record or a line of the invoice."
-    >
-      <p className="m-0 text-muted">
-        run <span className="text-fg">{runId}</span> · invoice <span className="text-fg">{invoiceId}</span>
-      </p>
-    </SigPlaceholder>
-  )
-}
 
 export function AttackLabPage() {
   const [params] = useSearchParams()

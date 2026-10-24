@@ -36,7 +36,7 @@ test('mock run: INV-003 is the failed round and the approval card is shown', asy
 
   await card.getByRole('link', { name: 'evidence trail' }).click()
   await expect(page).toHaveURL(/\/runs\/run-example-both\/invoices\/INV-003$/)
-  await expect(page.getByRole('heading', { level: 1, name: 'Case file' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'INV-003 · Cedar Grove Catering · $640.00' })).toBeVisible()
 })
 
 test('the challenge prompt opens the Attack Lab with the text as the draft', async ({ page }) => {
