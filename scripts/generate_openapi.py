@@ -1,4 +1,4 @@
-"""Build the v1 OpenAPI contract from its Pydantic schemas, without network access.
+"""Build the v1.2 OpenAPI contract from its Pydantic schemas, without network access.
 
 Run with ``backend/.venv/bin/python scripts/generate_openapi.py`` from the
 repository root. Endpoint metadata is transcribed from contracts/CONTRACT.md;
@@ -153,7 +153,7 @@ def build_openapi() -> dict[str, Any]:
         "/api/batches": {
             "post": operation(
                 "create_batch", "Create a standard invoice batch", "Batch", body="BatchRequest",
-                description="Create five invoices with one poisoned document. The poisoned invoice is not identified in the response.",
+                description="Create five invoices with one poisoned document. The poisoned invoice is not identified in the response. The additive bank_change kind creates five clean invoices and one untrusted vendor bank-change letter as a supporting document.",
             ),
         },
         "/api/batches/{batch_id}": {
@@ -323,6 +323,19 @@ def build_openapi() -> dict[str, Any]:
                 description="Poll every 2 seconds.",
             ),
         },
+        "/api/evidence/bank-change": {
+            "get": operation(
+                "list_bank_change_evidence", "List recorded bank-change runs", array("BankChangeReplaySummary"),
+                description="Read saved evidence files only; no live services or database queries. Return recorded runs, including incomplete outcomes, with the default run first and is_default=true. Recorded timestamps and source_file identify the historical recording; payment statuses do not establish settlement.",
+            ),
+        },
+        "/api/evidence/bank-change/{run_id}": {
+            "get": operation(
+                "get_bank_change_evidence", "Get a recorded bank-change run", "BankChangeReplay",
+                parameters=[run_id], errors=(404,),
+                description="Read saved evidence files only; no live services or database queries. The literal run_id default aliases run-1b936c2ea67f4236b644609ac7c72089. Return recorded=true, the original final event timestamp as recorded_at, the docs-relative source_file, normalized screen data, and the original saved evidence. Preserve event sequence numbers and timestamps; missing data from incomplete recordings remains explicit.",
+            ),
+        },
     }
 
     paths["/api/documents/{document_id}/pdf"]["get"]["responses"]["200"] = {
@@ -347,8 +360,8 @@ def build_openapi() -> dict[str, Any]:
         "openapi": "3.1.0",
         "info": {
             "title": "Countersign API",
-            "version": "1.0.0",
-            "description": "Countersign provenance firewall API for Fogline Festival, including the Hyphenate track additions. JSON uses snake_case. Timestamps are ISO 8601 UTC. Monetary amounts are integer cents; currency fields use USD. External service IDs in fixtures start with example-.",
+            "version": "1.2.0",
+            "description": "Countersign provenance firewall API for Fogline Festival, including the Hyphenate track additions. JSON uses snake_case. Timestamps are ISO 8601 UTC. Monetary amounts are integer cents; currency fields use USD. External service IDs in fixtures start with example-. The bank_change_replay fixture is explicitly recorded real evidence and retains original external service IDs.",
         },
         "paths": paths,
         "components": {

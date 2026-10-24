@@ -1,3 +1,5 @@
+Contract v1.2.0
+
 Conventions
 • Base path /api. JSON in snake_case. Timestamps are ISO 8601 UTC strings. Money is amount_cents (integer) plus currency ("USD").
 • Lanes: "unguarded" and "countersign"; system-level events use "system".
@@ -18,9 +20,9 @@ none
 {session_started_at}
 Clears runs, events, approvals; reseeds idempotently
 POST /api/batches
-{kind: "standard"}
+{kind: "standard" | "bank_change"}
 Batch
-Five invoices, one poisoned (which one is never exposed)
+Standard: five invoices, one poisoned (which one is never exposed). Bank change: five clean invoices and one vendor bank-change letter.
 GET /api/batches/{batch_id}
 none
 Batch
@@ -89,26 +91,37 @@ POST /api/audit/ask
 {question: string, run_id?: string}
 AuditAnswer
 503 when Elastic is offline
+GET /api/evidence/bank-change
+none
+BankChangeReplaySummary[]
+Read-only recorded bank-change runs, default first; no live calls
+GET /api/evidence/bank-change/{run_id}
+none
+BankChangeReplay
+Read-only complete saved evidence; literal run_id "default" aliases run-1b936c2ea67f4236b644609ac7c72089
 Schemas
 type Lane = "unguarded" | "countersign";
 type Mode = "live" | "offline" | "dry_run";
+type UnguardedMode = "ap" | "ap_with_vendor_updates";
 
 interface ServiceHealth { status: "ok" | "offline" | "missing_key" | "error"; mode: "live" | "offline"; detail?: string }
-interface Health { services: { nessie: ServiceHealth; elastic: ServiceHealth; anthropic: ServiceHealth; gemini: ServiceHealth; bitdeer: ServiceHealth }; session_started_at: string }
+interface Health { services: { nessie: ServiceHealth; elastic: ServiceHealth; anthropic: ServiceHealth; gemini: ServiceHealth; bitdeer: ServiceHealth; mutator?: ServiceHealth }; session_started_at: string }
 
 interface InvoiceSummary { invoice_id: string; invoice_number: string; vendor_id: string; vendor_name: string; amount_cents: number; currency: "USD"; due_date: string; document_id: string }
-interface Batch { batch_id: string; kind: "standard" | "attack"; created_at: string; invoices: InvoiceSummary[] }
+interface BatchRequest { kind: "standard" | "bank_change" }
+interface SupportingDocument { document_id: string; invoice_id: string; vendor_id: string; document_type: "vendor_bank_change_letter" }
+interface Batch { batch_id: string; kind: "standard" | "attack" | "bank_change"; created_at: string; invoices: InvoiceSummary[]; supporting_documents?: SupportingDocument[] }
 
-interface DocumentText { document_id: string; invoice_id: string; pages: { page: number; lines: { line: number; text: string }[] }[] }
+interface DocumentText { document_id: string; invoice_id: string; pages: { page: number; lines: { line: number; text: string }[] }[]; document_type?: "invoice" | "vendor_bank_change_letter" }
 
 interface AttackRequest { vendor_id: string; attack_text: string; placement: "visible_note" | "hidden_white_text" | "footer" }
 
-interface RunRequest { batch_id: string; lanes: Lane[]; instruction?: string }
+interface RunRequest { batch_id: string; lanes: Lane[]; instruction?: string; unguarded_mode?: UnguardedMode }
 interface LaneTally { paid_count: number; paid_cents: number; held_count: number; blocked_count: number; not_on_file_count: number; not_on_file_cents: number }
-interface Run { run_id: string; batch_id: string; instruction: string; created_at: string; lanes: { lane: Lane; status: "running" | "not_implemented" | "failed" | "completed" }[]; tallies?: Partial<Record<Lane, LaneTally>> }
+interface Run { run_id: string; batch_id: string; instruction: string; created_at: string; lanes: { lane: Lane; status: "running" | "not_implemented" | "failed" | "completed" }[]; tallies?: Partial<Record<Lane, LaneTally>>; unguarded_mode?: UnguardedMode }
 
 interface SourceSpan { document_id: string; page: number; line: number; char_start: number; char_end: number; quote: string; span_verified: boolean }
-interface ExtractedField { name: string; value: string | number | null; type: "money" | "date" | "string" | "account_number"; span: SourceSpan | null; trust: "untrusted" }
+interface ExtractedField { name: string; value: string | number | null; type: "money" | "date" | "string" | "account_number" | "number"; span: SourceSpan | null; trust: "untrusted" }
 interface Handle { name: string; type: ExtractedField["type"]; trust: "untrusted" | "trusted" | "corroborated"; span_verified: boolean }  // name like "$INV-003.remit_account_number"
 
 interface PlanArg { kind: "handle" | "step" | "trusted" | "literal"; ref?: string; value?: string | number }
@@ -126,7 +139,7 @@ interface GraphEdge { id: string; source: string; target: string; kind: "derived
 interface ProvenanceGraph { run_id: string; invoice_id: string; nodes: GraphNode[]; edges: GraphEdge[] }
 
 interface PlannerTranscript { run_id: string; calls: { call_id: string; model: string; prompt: string; response: string; prompt_hash: string }[]; leak_guard: { strings_checked: number; canaries_checked: number; matches: number } }
-interface AgentTranscript { run_id: string; invoice_id: string; model: string; steps: { kind: "message" | "tool_call"; text?: string; tool?: string; args?: Record<string, unknown>; result?: string }[] }
+interface AgentTranscript { run_id: string; invoice_id: string; model: string; provider?: string; unguarded_mode?: UnguardedMode; steps: { kind: "message" | "tool_call"; text?: string; tool?: string; args?: Record<string, unknown>; result?: string }[] }
 
 interface Approval { approval_id: string; run_id: string; invoice_id: string; invoice_number: string; vendor_name: string; amount_cents: number; requested_account_display: string; account_on_file_display: string; reason_codes: ReasonCode[]; status: "pending" | "resolved"; created_at: string; resolution?: { decision: ApprovalDecision["decision"]; note?: string; resolved_at: string; transfer_id?: string } }
 interface ApprovalDecision { decision: "pay_vendor_on_file" | "approve_new_account" | "reject"; note?: string; confirm_last4?: string }
@@ -139,7 +152,7 @@ interface RedTeamJob { job_id: string; status: "queued" | "running" | "completed
 
 interface AuditAnswer { answer: string; agent_id: string; conversation_id?: string; steps: { tool_id: string; esql?: string; row_count?: number }[] }
 Run events
-Every SSE message's data is a RunEvent: {run_id, seq, ts, type, lane: Lane | "system", mode?: Mode, payload}. seq increases by one per run across both lanes.
+Every SSE message's data is a RunEvent: {run_id, seq, ts, type, lane: Lane | "system", mode?: Mode, provider?: string, model?: string, unguarded_mode?: UnguardedMode, payload}. seq increases by one per run across both lanes.
 type
 Lane
 payload
@@ -154,7 +167,7 @@ either
 {invoice_id, document_id, pages, line_count}
 fields.extracted
 countersign
-{invoice_id, extractor_model, fields: ExtractedField[], instruction_like_spans: SourceSpan[], handles: Handle[]}
+{invoice_id, extractor_model, fields: ExtractedField[], instruction_like_spans: SourceSpan[], handles: Handle[], extraction_provenance?: ExtractionProvenance}
 plan.proposed
 countersign
 {planner_model, prompt_hash, steps: PlanStep[]}
@@ -259,4 +272,31 @@ system
 {item: InboxItem}
 New fixtures: people.json, vendor_detail.json, trial_balance.json, reconciliation.json, eval_job.json, autopilot.json.
 Changelog
+• 1.2.0: additive bank_change batches and supporting documents; unguarded execution modes and actual provider/model event/transcript metadata; optional mutator health; numeric extracted-field/handle type; extraction provider/cache provenance; read-only recorded bank-change replay endpoints and generated real-evidence fixture. Existing v1 names, required fields, endpoints, and synthetic fixtures remain valid.
 • 1.0.0: initial contract, including the Hyphenate track additions (Fogline Festival, ledger, roles, segregation of duties, inbox and autopilot, planted-errors eval).
+
+v1.2 additive workflow and extraction semantics
+Omitting RunRequest.unguarded_mode selects "ap". Newly created runs report their effective mode. The "ap_with_vendor_updates" mode gives only the unguarded agent the duty and tool to update its working remittance details from bank-change letters. The supporting document's vendor_id and invoice_id are server-owned associations; its text is untrusted and cannot update Countersign's vendor master. Supporting letters are evidence for an invoice, not another payable invoice.
+Newly produced unguarded events and transcripts include their actual provider, model, and effective mode. These fields stay optional for legacy records and other lanes. A legacy provider that cannot be recovered is labelled "legacy_unknown" rather than inferred from current configuration. The optional mutator health entry reports its own configured mode; the legacy bitdeer health entry continues to describe the unguarded adapter.
+
+interface ExtractionAttempt { provider: string; model: string; outcome: "success" | "failed" | "skipped"; http_status?: number; error_code?: string }
+interface ExtractionProvenance { provider: string; model: string; extracted_at: string; cached: boolean; document_sha256: string; prompt_version: string; cache_key?: string; attempts?: ExtractionAttempt[] }
+interface FieldsExtractedPayload { invoice_id: string; extractor_model: string; fields: ExtractedField[]; instruction_like_spans: SourceSpan[]; handles: Handle[]; extraction_provenance?: ExtractionProvenance }
+Extraction provenance identifies the provider/model of the accepted result. extractor_model must equal extraction_provenance.model when metadata is present. extracted_at is the original UTC extraction timestamp, including on cache reuse; document_sha256 is 64 lowercase hexadecimal characters from original document bytes. http_status, if present, is an integer in 100..599; error_code is a safe classification, never the provider response body. Cached claims retain the original producer/timestamp with cached=true and still pass deterministic span verification. Legacy records may omit provenance; no producer or timestamp is inferred from current settings. Graph extraction-operation nodes use existing kind "plan_step", trust "none", and detail.operation="quarantined_extraction", with explicit "(fresh)" or "(cached)" labels. Fields and handles retain provenance in detail; no cache hit promotes document trust.
+
+Recorded bank-change replay (read-only)
+GET /api/evidence/bank-change returns every available saved bank_change_live run snapshot, including failed/incomplete outcomes and historical pre-fix evidence. Comparison summaries are excluded; byte-identical copies of the same run are represented once. The default run is first with is_default=true. GET /api/evidence/bank-change/default aliases run-1b936c2ea67f4236b644609ac7c72089; an unknown run_id returns 404. Endpoints load committed saved evidence only, make no live service calls or database queries, and never execute or resolve payments or approvals.
+Every summary/detail has recorded=true, recorded_at from the final original event timestamp, source_file relative to backend/, and the source file's SHA-256. Event sequence numbers and original timestamps are preserved; historical mode="live" and pending transfer statuses describe the recording, not current activity or settlement. Provider/model labels come from saved evidence; unknown legacy identities are explicit. Missing data from incomplete recordings is omitted and described in limitations, never invented.
+
+interface ReplayModel { provider: string; model: string }
+interface ReplayPayment extends Payment { invoice_id: string; invoice_number: string; vendor_id: string; vendor_name: string; currency: "USD"; account_on_file_display?: string; ts: string; via: "policy" | "approval" | "agent" }
+interface ReplayHold { invoice_id: string; invoice_number: string; vendor_id: string; vendor_name: string; amount_cents: number; currency: "USD"; reason_codes: ReasonCode[]; ts: string; account_on_file_display?: string; requested_account_display?: string; letter_account_display?: string; approval?: Approval }
+interface ReplayLetter { document: DocumentText; text: string; vendor_id: string; vendor_name: string; requested_account_display: string; account_on_file_display?: string }
+interface ReplayLane { lane: Lane; provider: string; model: string; model_role: "agent" | "planner"; status: "running" | "not_implemented" | "failed" | "completed"; tally: LaneTally; extraction_models: ReplayModel[]; payments: ReplayPayment[]; holds: ReplayHold[] }
+interface ReplayLanes { unguarded: ReplayLane; countersign: ReplayLane }
+interface ReplayCounts { unguarded: LaneTally; countersign: LaneTally; letter_payment_count: number; countersign_held_correctly?: boolean }
+interface BankChangeReplaySummary { recorded: true; recorded_at: string; source_file: string; source_sha256: string; run_id: string; is_default: boolean; complete: boolean; status: string; unguarded_provider: string; unguarded_model: string; unguarded_mode?: UnguardedMode; summary: ReplayCounts; limitations: string[] }
+interface BankChangeReplay extends BankChangeReplaySummary { run: Run; batch: Batch; letter?: ReplayLetter; lanes: ReplayLanes; leak_guard?: { strings_checked: number; canaries_checked: number; matches: number }; events: RunEvent[]; held_invoice_graph?: ProvenanceGraph; planner_transcript?: PlannerTranscript; transcripts: AgentTranscript[]; evidence: Record<string, unknown> }
+Replay payment amount_cents, counts, sequence numbers, and leak-guard counts are integers on the wire, as in their existing models. countersign.provider/model identifies the planner (model_role="planner"); extraction_models separately identifies actual extraction producers. The original saved run remains available unchanged in evidence alongside normalized screen data. source_sha256 is 64 lowercase hexadecimal characters. Older recordings that lack planner_transcript or leak_guard omit those fields and disclose the missing evidence in limitations; the default full recording includes both.
+
+New fixture: contracts/fixtures/bank_change_replay.json, generated from the real default run's saved evidence through the same loader as the endpoints. This is a recorded-evidence exception to the synthetic fixture ID convention: real Nessie transfer/account IDs and original event timestamps are preserved. The fixture does not prove settlement or execute a new run.
