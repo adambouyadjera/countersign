@@ -1,0 +1,12 @@
+{
+  "answer": "Independent illustrative response example: INV-003 was held because the requested remittance account differed from the verified vendor account. The planner received opaque handles, and the AP manager rejected the request. This file is not an audit service response captured during the offline replay.",
+  "agent_id": "example-elastic-audit-agent",
+  "conversation_id": "example-elastic-conversation-1",
+  "steps": [
+    {
+      "tool_id": "example-elastic-tool-policy-search",
+      "esql": "FROM countersign-events | WHERE run_id == \"run-example-both\" AND invoice_id == \"INV-003\" | KEEP type, payload",
+      "row_count": 3
+    }
+  ]
+}

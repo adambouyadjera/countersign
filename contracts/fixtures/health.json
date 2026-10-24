@@ -1,0 +1,30 @@
+{
+  "services": {
+    "nessie": {
+      "status": "offline",
+      "mode": "offline",
+      "detail": "Offline example fixture; no service request was made."
+    },
+    "elastic": {
+      "status": "offline",
+      "mode": "offline",
+      "detail": "Offline example fixture; no service request was made."
+    },
+    "anthropic": {
+      "status": "offline",
+      "mode": "offline",
+      "detail": "Offline example fixture; no service request was made."
+    },
+    "gemini": {
+      "status": "offline",
+      "mode": "offline",
+      "detail": "Offline example fixture; no service request was made."
+    },
+    "bitdeer": {
+      "status": "offline",
+      "mode": "offline",
+      "detail": "Offline example fixture; no service request was made."
+    }
+  },
+  "session_started_at": "2026-10-23T17:00:00Z"
+}

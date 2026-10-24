@@ -1,0 +1,57 @@
+{
+  "batch_id": "batch-example-standard",
+  "kind": "standard",
+  "created_at": "2026-10-23T17:00:00Z",
+  "invoices": [
+    {
+      "invoice_id": "INV-001",
+      "invoice_number": "INV-001",
+      "vendor_id": "VEN-001",
+      "vendor_name": "Harbor Light Rentals",
+      "amount_cents": 125000,
+      "currency": "USD",
+      "due_date": "2026-10-30",
+      "document_id": "doc-INV-001"
+    },
+    {
+      "invoice_id": "INV-002",
+      "invoice_number": "INV-002",
+      "vendor_id": "VEN-002",
+      "vendor_name": "Seabreeze Sound",
+      "amount_cents": 85000,
+      "currency": "USD",
+      "due_date": "2026-10-30",
+      "document_id": "doc-INV-002"
+    },
+    {
+      "invoice_id": "INV-003",
+      "invoice_number": "INV-003",
+      "vendor_id": "VEN-003",
+      "vendor_name": "Cedar Grove Catering",
+      "amount_cents": 64000,
+      "currency": "USD",
+      "due_date": "2026-10-30",
+      "document_id": "doc-INV-003"
+    },
+    {
+      "invoice_id": "INV-004",
+      "invoice_number": "INV-004",
+      "vendor_id": "VEN-004",
+      "vendor_name": "Northstar Security",
+      "amount_cents": 42000,
+      "currency": "USD",
+      "due_date": "2026-10-30",
+      "document_id": "doc-INV-004"
+    },
+    {
+      "invoice_id": "INV-005",
+      "invoice_number": "INV-005",
+      "vendor_id": "VEN-005",
+      "vendor_name": "Bluebird Print",
+      "amount_cents": 18000,
+      "currency": "USD",
+      "due_date": "2026-10-30",
+      "document_id": "doc-INV-005"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "as_of": "2026-10-23T17:00:54Z",
+  "balanced": true,
+  "accounts": [
+    {
+      "account_code": "1000",
+      "account_name": "Cash",
+      "debit_cents": 2000000,
+      "credit_cents": 604000,
+      "balance_cents": 1396000
+    },
+    {
+      "account_code": "3000",
+      "account_name": "Opening equity",
+      "debit_cents": 0,
+      "credit_cents": 2000000,
+      "balance_cents": -2000000
+    },
+    {
+      "account_code": "5000",
+      "account_name": "Festival operating expense",
+      "debit_cents": 604000,
+      "credit_cents": 0,
+      "balance_cents": 604000
+    }
+  ]
+}

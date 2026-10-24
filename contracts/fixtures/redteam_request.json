@@ -1,0 +1,7 @@
+{
+  "variants": 10,
+  "templates": [
+    "remittance_override",
+    "authority_claim"
+  ]
+}

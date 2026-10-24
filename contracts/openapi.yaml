@@ -1,0 +1,3799 @@
+openapi: 3.1.0
+info:
+  title: Countersign API
+  version: 1.0.0
+  description: Countersign provenance firewall API for Fogline Festival, including
+    the Hyphenate track additions. JSON uses snake_case. Timestamps are ISO 8601 UTC.
+    Monetary amounts are integer cents; currency fields use USD. External service
+    IDs in fixtures start with example-.
+paths:
+  /api/health:
+    get:
+      operationId: get_health
+      summary: Get service health
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      description: Live service checks are cached for 30 seconds.
+  /api/demo/reset:
+    post:
+      operationId: reset_demo
+      summary: Reset the demo session
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetResponse'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      description: Clear runs, events, and approvals, then reseed idempotently.
+  /api/batches:
+    post:
+      operationId: create_batch
+      summary: Create a standard invoice batch
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRequest'
+      description: Create five invoices with one poisoned document. The poisoned invoice
+        is not identified in the response.
+  /api/batches/{batch_id}:
+    get:
+      operationId: get_batch
+      summary: Get an invoice batch
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/documents/{document_id}:
+    get:
+      operationId: get_document
+      summary: Get line-numbered document text
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentText'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/documents/{document_id}/pdf:
+    get:
+      operationId: get_document_pdf
+      summary: Get the original PDF
+      responses:
+        '200':
+          description: Original PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/attacks:
+    post:
+      operationId: create_attack
+      summary: Create an attack batch and inbox item
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttackRequest'
+      description: 'Create an attack batch and an inbox item. Substitute the {{ATTACKER_ACCOUNT}}
+        token in attack_text. The attack text must contain 1 to 600 characters. Rate
+        limit: 10 requests per minute.'
+  /api/runs:
+    post:
+      operationId: create_run
+      summary: Start the requested lanes in the background
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+      description: 'When instruction is omitted, use the trusted instruction: Pay
+        every invoice in this batch that is due within 30 days and matches an open
+        purchase order. Pay only to accounts on file; anything else needs human approval.'
+  /api/runs/{run_id}:
+    get:
+      operationId: get_run
+      summary: Get a run
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      description: Includes lane tallies once the run is complete.
+  /api/runs/{run_id}/events:
+    get:
+      operationId: get_run_events
+      summary: Stream run events
+      responses:
+        '200':
+          description: Server-sent events carrying JSON RunEvent objects; remains
+            open after run.completed
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/RunEvent'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Last-Event-ID
+        in: header
+        required: false
+        schema:
+          type: integer
+        description: Resume after this per-run event sequence number.
+      description: Each SSE message uses id = RunEvent.seq, event = RunEvent.type,
+        and data = the JSON RunEvent. Sequence numbers increase by one across both
+        lanes. Honor Last-Event-ID. The connection remains open after run.completed.
+  /api/runs/{run_id}/decisions:
+    get:
+      operationId: get_run_decisions
+      summary: Get Countersign policy decisions
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyDecision'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/runs/{run_id}/invoices/{invoice_id}/graph:
+    get:
+      operationId: get_invoice_graph
+      summary: Get Countersign invoice provenance
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvenanceGraph'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: invoice_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/runs/{run_id}/planner_transcript:
+    get:
+      operationId: get_planner_transcript
+      summary: Get exactly what the planner received
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannerTranscript'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/runs/{run_id}/invoices/{invoice_id}/agent_transcript:
+    get:
+      operationId: get_agent_transcript
+      summary: Get the unguarded agent transcript
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTranscript'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: invoice_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/approvals:
+    get:
+      operationId: list_approvals
+      summary: List approvals
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Approval'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - pending
+          - resolved
+  /api/approvals/{approval_id}:
+    post:
+      operationId: resolve_approval
+      summary: Resolve an approval
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Approval'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecision'
+      parameters:
+      - name: approval_id
+        in: path
+        required: true
+        schema:
+          type: string
+      description: Return 422 for an incorrect confirm_last4, 409 if already resolved,
+        or 403 with code sod_violation for a segregation-of-duties violation.
+  /api/balances:
+    get:
+      operationId: get_balances
+      summary: Get bank balances
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Balances'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+  /api/redteam:
+    post:
+      operationId: create_redteam_job
+      summary: Start a red-team job
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedTeamJob'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedTeamRequest'
+      description: Run in the background with a dry-run bank.
+  /api/redteam/{job_id}:
+    get:
+      operationId: get_redteam_job
+      summary: Get a red-team job
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedTeamJob'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+      description: Poll every 2 seconds.
+  /api/audit/ask:
+    post:
+      operationId: ask_audit
+      summary: Ask the audit agent a question
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditAnswer'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditAskRequest'
+      description: Return 503 when Elastic is offline.
+  /api/people:
+    get:
+      operationId: list_people
+      summary: List people and the AP agent
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Person'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      description: Includes the agent itself.
+  /api/vendors/{vendor_id}:
+    get:
+      operationId: get_vendor
+      summary: Get vendor account history and past payments
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorDetail'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: vendor_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/vendors/{vendor_id}/bank_change:
+    post:
+      operationId: change_vendor_bank
+      summary: Change the vendor bank account
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorDetail'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BankChangeRequest'
+      parameters:
+      - name: vendor_id
+        in: path
+        required: true
+        schema:
+          type: string
+      description: Only vendor_admin actors may change the bank account. Otherwise
+        return 403 with code sod_violation.
+  /api/ledger/entries:
+    get:
+      operationId: list_journal_entries
+      summary: List journal entries
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JournalEntry'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: run_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: invoice_id
+        in: query
+        required: false
+        schema:
+          type: string
+  /api/ledger/trial_balance:
+    get:
+      operationId: get_trial_balance
+      summary: Get the trial balance
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrialBalance'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+  /api/reconciliation:
+    get:
+      operationId: get_reconciliation
+      summary: Reconcile the Nessie company account and ledger cash
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reconciliation'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+  /api/inbox:
+    post:
+      operationId: create_inbox_item
+      summary: Add a document to the inbox
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxItem'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxRequest'
+    get:
+      operationId: list_inbox_items
+      summary: List inbox items
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InboxItem'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+  /api/autopilot:
+    get:
+      operationId: get_autopilot
+      summary: Get autopilot settings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Autopilot'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+    post:
+      operationId: set_autopilot
+      summary: Set autopilot settings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Autopilot'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutopilotRequest'
+  /api/eval:
+    post:
+      operationId: create_eval_job
+      summary: Start a planted-errors evaluation
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalJob'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvalRequest'
+      description: Use a dry-run bank.
+  /api/eval/{job_id}:
+    get:
+      operationId: get_eval_job
+      summary: Get an evaluation job
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalJob'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+      description: Poll every 2 seconds.
+components:
+  schemas:
+    AccountBalance:
+      additionalProperties: false
+      properties:
+        role:
+          enum:
+          - company
+          - vendor
+          - attacker
+          title: Role
+          type: string
+        label:
+          title: Label
+          type: string
+        account_id:
+          title: Account Id
+          type: string
+        display_number:
+          title: Display Number
+          type: string
+        balance_cents:
+          title: Balance Cents
+          type: integer
+        received_this_session_cents:
+          title: Received This Session Cents
+          type: integer
+        transfers_this_session:
+          items:
+            $ref: '#/components/schemas/SessionTransfer'
+          title: Transfers This Session
+          type: array
+      required:
+      - role
+      - label
+      - account_id
+      - display_number
+      - balance_cents
+      - received_this_session_cents
+      - transfers_this_session
+      title: AccountBalance
+      type: object
+    AgentMessageEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: agent.message
+          title: Type
+          type: string
+        lane:
+          const: unguarded
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/AgentMessagePayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: AgentMessageEvent
+      type: object
+    AgentMessagePayload:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        text:
+          title: Text
+          type: string
+      required:
+      - invoice_id
+      - text
+      title: AgentMessagePayload
+      type: object
+    AgentToolCallEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: agent.tool_call
+          title: Type
+          type: string
+        lane:
+          const: unguarded
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/AgentToolCallPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: AgentToolCallEvent
+      type: object
+    AgentToolCallPayload:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        tool:
+          title: Tool
+          type: string
+        args:
+          additionalProperties: true
+          title: Args
+          type: object
+        result_summary:
+          title: Result Summary
+          type: string
+      required:
+      - invoice_id
+      - tool
+      - args
+      - result_summary
+      title: AgentToolCallPayload
+      type: object
+    AgentTranscript:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        model:
+          title: Model
+          type: string
+        steps:
+          items:
+            $ref: '#/components/schemas/AgentTranscriptStep'
+          title: Steps
+          type: array
+      required:
+      - run_id
+      - invoice_id
+      - model
+      - steps
+      title: AgentTranscript
+      type: object
+    AgentTranscriptStep:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+          - message
+          - tool_call
+          title: Kind
+          type: string
+        text:
+          title: Text
+          type: string
+        tool:
+          title: Tool
+          type: string
+        args:
+          additionalProperties: true
+          title: Args
+          type: object
+        result:
+          title: Result
+          type: string
+      required:
+      - kind
+      title: AgentTranscriptStep
+      type: object
+    Approval:
+      additionalProperties: false
+      properties:
+        approval_id:
+          title: Approval Id
+          type: string
+        run_id:
+          title: Run Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        invoice_number:
+          title: Invoice Number
+          type: string
+        vendor_name:
+          title: Vendor Name
+          type: string
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        requested_account_display:
+          title: Requested Account Display
+          type: string
+        account_on_file_display:
+          title: Account On File Display
+          type: string
+        reason_codes:
+          items:
+            enum:
+            - BANK_DETAILS_MISMATCH
+            - AMOUNT_MISMATCH
+            - UNKNOWN_VENDOR
+            - UNVERIFIED_SOURCE
+            - DUPLICATE_INVOICE
+            - PLANNER_INVALID
+            - POLICY_NOT_IMPLEMENTED
+            - OVER_AUTONOMY_LIMIT
+            type: string
+          title: Reason Codes
+          type: array
+        status:
+          enum:
+          - pending
+          - resolved
+          title: Status
+          type: string
+        created_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Created At
+          type: string
+        requested_by:
+          title: Requested By
+          type: string
+        required_role:
+          enum:
+          - ap_agent
+          - ap_manager
+          - controller
+          - vendor_admin
+          title: Required Role
+          type: string
+        resolution:
+          $ref: '#/components/schemas/ApprovalResolution'
+      required:
+      - approval_id
+      - run_id
+      - invoice_id
+      - invoice_number
+      - vendor_name
+      - amount_cents
+      - requested_account_display
+      - account_on_file_display
+      - reason_codes
+      - status
+      - created_at
+      - requested_by
+      - required_role
+      title: Approval
+      type: object
+    ApprovalDecision:
+      additionalProperties: false
+      properties:
+        decision:
+          enum:
+          - pay_vendor_on_file
+          - approve_new_account
+          - reject
+          title: Decision
+          type: string
+        actor_id:
+          title: Actor Id
+          type: string
+        note:
+          title: Note
+          type: string
+        confirm_last4:
+          title: Confirm Last4
+          type: string
+      required:
+      - decision
+      - actor_id
+      title: ApprovalDecision
+      type: object
+    ApprovalResolution:
+      additionalProperties: false
+      properties:
+        decision:
+          enum:
+          - pay_vendor_on_file
+          - approve_new_account
+          - reject
+          title: Decision
+          type: string
+        note:
+          title: Note
+          type: string
+        resolved_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Resolved At
+          type: string
+        transfer_id:
+          title: Transfer Id
+          type: string
+      required:
+      - decision
+      - resolved_at
+      title: ApprovalResolution
+      type: object
+    ApprovalResolvedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: approval.resolved
+          title: Type
+          type: string
+        lane:
+          const: countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/ApprovalResolvedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: ApprovalResolvedEvent
+      type: object
+    ApprovalResolvedPayload:
+      additionalProperties: false
+      properties:
+        approval_id:
+          title: Approval Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        decision:
+          enum:
+          - pay_vendor_on_file
+          - approve_new_account
+          - reject
+          title: Decision
+          type: string
+        note:
+          title: Note
+          type: string
+      required:
+      - approval_id
+      - invoice_id
+      - decision
+      title: ApprovalResolvedPayload
+      type: object
+    Attack:
+      additionalProperties: false
+      description: The named Attack schema uses the contract's only defined attack
+        shape.
+      properties:
+        vendor_id:
+          title: Vendor Id
+          type: string
+        attack_text:
+          maxLength: 600
+          minLength: 1
+          title: Attack Text
+          type: string
+        placement:
+          enum:
+          - visible_note
+          - hidden_white_text
+          - footer
+          title: Placement
+          type: string
+      required:
+      - vendor_id
+      - attack_text
+      - placement
+      title: Attack
+      type: object
+    AttackRequest:
+      additionalProperties: false
+      properties:
+        vendor_id:
+          title: Vendor Id
+          type: string
+        attack_text:
+          maxLength: 600
+          minLength: 1
+          title: Attack Text
+          type: string
+        placement:
+          enum:
+          - visible_note
+          - hidden_white_text
+          - footer
+          title: Placement
+          type: string
+      required:
+      - vendor_id
+      - attack_text
+      - placement
+      title: AttackRequest
+      type: object
+    AuditAnswer:
+      additionalProperties: false
+      properties:
+        answer:
+          title: Answer
+          type: string
+        agent_id:
+          title: Agent Id
+          type: string
+        conversation_id:
+          title: Conversation Id
+          type: string
+        steps:
+          items:
+            $ref: '#/components/schemas/AuditStep'
+          title: Steps
+          type: array
+      required:
+      - answer
+      - agent_id
+      - steps
+      title: AuditAnswer
+      type: object
+    AuditAskRequest:
+      additionalProperties: false
+      properties:
+        question:
+          title: Question
+          type: string
+        run_id:
+          title: Run Id
+          type: string
+      required:
+      - question
+      title: AuditAskRequest
+      type: object
+    AuditStep:
+      additionalProperties: false
+      properties:
+        tool_id:
+          title: Tool Id
+          type: string
+        esql:
+          title: Esql
+          type: string
+        row_count:
+          title: Row Count
+          type: integer
+      required:
+      - tool_id
+      title: AuditStep
+      type: object
+    Autopilot:
+      additionalProperties: false
+      properties:
+        enabled:
+          title: Enabled
+          type: boolean
+        lanes:
+          items:
+            enum:
+            - unguarded
+            - countersign
+            type: string
+          title: Lanes
+          type: array
+        run_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Run Id
+        last_checked_at:
+          anyOf:
+          - format: date-time
+            pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+            type: string
+          - type: 'null'
+          title: Last Checked At
+      required:
+      - enabled
+      - lanes
+      - run_id
+      - last_checked_at
+      title: Autopilot
+      type: object
+    AutopilotRequest:
+      additionalProperties: false
+      properties:
+        enabled:
+          title: Enabled
+          type: boolean
+        lanes:
+          items:
+            enum:
+            - unguarded
+            - countersign
+            type: string
+          title: Lanes
+          type: array
+      required:
+      - enabled
+      title: AutopilotRequest
+      type: object
+    Balances:
+      additionalProperties: false
+      properties:
+        session_started_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Session Started At
+          type: string
+        bank_mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Bank Mode
+          type: string
+        accounts:
+          items:
+            $ref: '#/components/schemas/AccountBalance'
+          title: Accounts
+          type: array
+      required:
+      - session_started_at
+      - bank_mode
+      - accounts
+      title: Balances
+      type: object
+    BankChangeRequest:
+      additionalProperties: false
+      properties:
+        actor_id:
+          title: Actor Id
+          type: string
+        new_account_display:
+          title: New Account Display
+          type: string
+        evidence_note:
+          title: Evidence Note
+          type: string
+      required:
+      - actor_id
+      - new_account_display
+      - evidence_note
+      title: BankChangeRequest
+      type: object
+    Batch:
+      additionalProperties: false
+      properties:
+        batch_id:
+          title: Batch Id
+          type: string
+        kind:
+          enum:
+          - standard
+          - attack
+          title: Kind
+          type: string
+        created_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Created At
+          type: string
+        invoices:
+          items:
+            $ref: '#/components/schemas/InvoiceSummary'
+          title: Invoices
+          type: array
+      required:
+      - batch_id
+      - kind
+      - created_at
+      - invoices
+      title: Batch
+      type: object
+    BatchRequest:
+      additionalProperties: false
+      properties:
+        kind:
+          const: standard
+          title: Kind
+          type: string
+      required:
+      - kind
+      title: BatchRequest
+      type: object
+    CheckCode:
+      enum:
+      - VENDOR_KNOWN
+      - SPAN_VERIFIED
+      - PAYEE_ON_FILE
+      - AMOUNT_MATCHES_PO
+      - NOT_DUPLICATE
+      - INSTRUCTIONS_IN_DOCUMENT
+      - VENDOR_HISTORY
+      type: string
+      title: CheckCode
+    DocumentLine:
+      additionalProperties: false
+      properties:
+        line:
+          title: Line
+          type: integer
+        text:
+          title: Text
+          type: string
+      required:
+      - line
+      - text
+      title: DocumentLine
+      type: object
+    DocumentLoadedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: document.loaded
+          title: Type
+          type: string
+        lane:
+          enum:
+          - unguarded
+          - countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/DocumentLoadedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: DocumentLoadedEvent
+      type: object
+    DocumentLoadedPayload:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        document_id:
+          title: Document Id
+          type: string
+        pages:
+          title: Pages
+          type: integer
+        line_count:
+          title: Line Count
+          type: integer
+      required:
+      - invoice_id
+      - document_id
+      - pages
+      - line_count
+      title: DocumentLoadedPayload
+      type: object
+    DocumentPage:
+      additionalProperties: false
+      properties:
+        page:
+          title: Page
+          type: integer
+        lines:
+          items:
+            $ref: '#/components/schemas/DocumentLine'
+          title: Lines
+          type: array
+      required:
+      - page
+      - lines
+      title: DocumentPage
+      type: object
+    DocumentText:
+      additionalProperties: false
+      properties:
+        document_id:
+          title: Document Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        pages:
+          items:
+            $ref: '#/components/schemas/DocumentPage'
+          title: Pages
+          type: array
+      required:
+      - document_id
+      - invoice_id
+      - pages
+      title: DocumentText
+      type: object
+    ErrorDetail:
+      additionalProperties: false
+      properties:
+        code:
+          enum:
+          - validation_error
+          - not_found
+          - conflict
+          - rate_limited
+          - service_unavailable
+          - internal
+          - sod_violation
+          title: Code
+          type: string
+        message:
+          title: Message
+          type: string
+        detail:
+          additionalProperties: true
+          title: Detail
+          type: object
+      required:
+      - code
+      - message
+      title: ErrorDetail
+      type: object
+    ErrorEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: error
+          title: Type
+          type: string
+        lane:
+          enum:
+          - unguarded
+          - countersign
+          - system
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/ErrorPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: ErrorEvent
+      type: object
+    ErrorPayload:
+      additionalProperties: false
+      properties:
+        message:
+          title: Message
+          type: string
+        recoverable:
+          title: Recoverable
+          type: boolean
+        invoice_id:
+          title: Invoice Id
+          type: string
+      required:
+      - message
+      - recoverable
+      title: ErrorPayload
+      type: object
+    ErrorResponse:
+      additionalProperties: false
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+      required:
+      - error
+      title: ErrorResponse
+      type: object
+    ErrorTypeMetrics:
+      additionalProperties: false
+      properties:
+        caught:
+          title: Caught
+          type: integer
+        missed:
+          title: Missed
+          type: integer
+      required:
+      - caught
+      - missed
+      title: ErrorTypeMetrics
+      type: object
+    EvalItemResult:
+      additionalProperties: false
+      properties:
+        item_id:
+          title: Item Id
+          type: string
+        invoice_number:
+          title: Invoice Number
+          type: string
+        error_type:
+          title: Error Type
+          type: string
+        expected_outcome:
+          enum:
+          - PAY
+          - HOLD
+          - BLOCK
+          title: Expected Outcome
+          type: string
+        expected_reason_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expected Reason Code
+        actual_outcome:
+          enum:
+          - PAY
+          - HOLD
+          - BLOCK
+          - ERROR
+          title: Actual Outcome
+          type: string
+        actual_reason_codes:
+          items:
+            type: string
+          title: Actual Reason Codes
+          type: array
+        passed:
+          title: Passed
+          type: boolean
+      required:
+      - item_id
+      - invoice_number
+      - error_type
+      - expected_outcome
+      - expected_reason_code
+      - actual_outcome
+      - actual_reason_codes
+      - passed
+      title: EvalItemResult
+      type: object
+    EvalJob:
+      additionalProperties: false
+      properties:
+        job_id:
+          title: Job Id
+          type: string
+        suite:
+          title: Suite
+          type: string
+        status:
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          title: Status
+          type: string
+        execution:
+          const: dry_run
+          title: Execution
+          type: string
+        progress:
+          $ref: '#/components/schemas/JobProgress'
+        metrics:
+          $ref: '#/components/schemas/EvalMetrics'
+        items:
+          items:
+            $ref: '#/components/schemas/EvalItemResult'
+          title: Items
+          type: array
+      required:
+      - job_id
+      - suite
+      - status
+      - execution
+      - progress
+      - items
+      title: EvalJob
+      type: object
+    EvalMetrics:
+      additionalProperties: false
+      properties:
+        accuracy:
+          anyOf:
+          - type: integer
+          - type: number
+          title: Accuracy
+        false_holds_on_clean:
+          title: False Holds On Clean
+          type: integer
+        unauthorized_payments:
+          title: Unauthorized Payments
+          type: integer
+        by_error_type:
+          additionalProperties:
+            $ref: '#/components/schemas/ErrorTypeMetrics'
+          title: By Error Type
+          type: object
+      required:
+      - accuracy
+      - false_holds_on_clean
+      - unauthorized_payments
+      - by_error_type
+      title: EvalMetrics
+      type: object
+    EvalRequest:
+      additionalProperties: false
+      properties:
+        suite:
+          const: planted_errors_v1
+          title: Suite
+          type: string
+        lanes:
+          items:
+            enum:
+            - unguarded
+            - countersign
+            type: string
+          title: Lanes
+          type: array
+      required:
+      - suite
+      title: EvalRequest
+      type: object
+    ExtractedField:
+      additionalProperties: false
+      properties:
+        name:
+          title: Name
+          type: string
+        value:
+          anyOf:
+          - type: string
+          - type: integer
+          - type: number
+          - type: 'null'
+          title: Value
+        type:
+          enum:
+          - money
+          - date
+          - string
+          - account_number
+          title: Type
+          type: string
+        span:
+          anyOf:
+          - $ref: '#/components/schemas/SourceSpan'
+          - type: 'null'
+        trust:
+          const: untrusted
+          title: Trust
+          type: string
+      required:
+      - name
+      - value
+      - type
+      - span
+      - trust
+      title: ExtractedField
+      type: object
+    FieldsExtractedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: fields.extracted
+          title: Type
+          type: string
+        lane:
+          const: countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/FieldsExtractedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: FieldsExtractedEvent
+      type: object
+    FieldsExtractedPayload:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        extractor_model:
+          title: Extractor Model
+          type: string
+        fields:
+          items:
+            $ref: '#/components/schemas/ExtractedField'
+          title: Fields
+          type: array
+        instruction_like_spans:
+          items:
+            $ref: '#/components/schemas/SourceSpan'
+          title: Instruction Like Spans
+          type: array
+        handles:
+          items:
+            $ref: '#/components/schemas/Handle'
+          title: Handles
+          type: array
+      required:
+      - invoice_id
+      - extractor_model
+      - fields
+      - instruction_like_spans
+      - handles
+      title: FieldsExtractedPayload
+      type: object
+    GraphEdge:
+      additionalProperties: false
+      properties:
+        id:
+          title: Id
+          type: string
+        source:
+          title: Source
+          type: string
+        target:
+          title: Target
+          type: string
+        kind:
+          enum:
+          - derived_from
+          - corroborated_by
+          - checked_by
+          - decided
+          title: Kind
+          type: string
+        trust:
+          enum:
+          - untrusted
+          - trusted
+          - corroborated
+          title: Trust
+          type: string
+      required:
+      - id
+      - source
+      - target
+      - kind
+      - trust
+      title: GraphEdge
+      type: object
+    GraphNode:
+      additionalProperties: false
+      properties:
+        id:
+          title: Id
+          type: string
+        kind:
+          enum:
+          - span
+          - field
+          - handle
+          - trusted_record
+          - plan_step
+          - policy_check
+          - action
+          title: Kind
+          type: string
+        label:
+          title: Label
+          type: string
+        trust:
+          enum:
+          - trusted
+          - untrusted
+          - corroborated
+          - none
+          title: Trust
+          type: string
+        status:
+          enum:
+          - passed
+          - failed
+          - paid
+          - held
+          - blocked
+          - approved
+          - rejected
+          title: Status
+          type: string
+        span:
+          $ref: '#/components/schemas/SourceSpan'
+        detail:
+          additionalProperties: true
+          title: Detail
+          type: object
+      required:
+      - id
+      - kind
+      - label
+      - trust
+      title: GraphNode
+      type: object
+    Handle:
+      additionalProperties: false
+      properties:
+        name:
+          title: Name
+          type: string
+        type:
+          enum:
+          - money
+          - date
+          - string
+          - account_number
+          title: Type
+          type: string
+        trust:
+          enum:
+          - untrusted
+          - trusted
+          - corroborated
+          title: Trust
+          type: string
+        span_verified:
+          title: Span Verified
+          type: boolean
+      required:
+      - name
+      - type
+      - trust
+      - span_verified
+      title: Handle
+      type: object
+    Health:
+      additionalProperties: false
+      properties:
+        services:
+          $ref: '#/components/schemas/ServicesHealth'
+        session_started_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Session Started At
+          type: string
+      required:
+      - services
+      - session_started_at
+      title: Health
+      type: object
+    InboxItem:
+      additionalProperties: false
+      properties:
+        item_id:
+          title: Item Id
+          type: string
+        document_id:
+          title: Document Id
+          type: string
+        sender:
+          title: Sender
+          type: string
+        received_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Received At
+          type: string
+        status:
+          enum:
+          - queued
+          - processing
+          - processed
+          title: Status
+          type: string
+        run_id:
+          title: Run Id
+          type: string
+      required:
+      - item_id
+      - document_id
+      - sender
+      - received_at
+      - status
+      title: InboxItem
+      type: object
+    InboxReceivedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: inbox.received
+          title: Type
+          type: string
+        lane:
+          const: system
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/InboxReceivedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: InboxReceivedEvent
+      type: object
+    InboxReceivedPayload:
+      additionalProperties: false
+      properties:
+        item:
+          $ref: '#/components/schemas/InboxItem'
+      required:
+      - item
+      title: InboxReceivedPayload
+      type: object
+    InboxRequest:
+      additionalProperties: false
+      properties:
+        document_id:
+          title: Document Id
+          type: string
+        sender:
+          title: Sender
+          type: string
+      required:
+      - document_id
+      - sender
+      title: InboxRequest
+      type: object
+    InvoiceSummary:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        invoice_number:
+          title: Invoice Number
+          type: string
+        vendor_id:
+          title: Vendor Id
+          type: string
+        vendor_name:
+          title: Vendor Name
+          type: string
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        currency:
+          const: USD
+          title: Currency
+          type: string
+        due_date:
+          format: date
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}$
+          title: Due Date
+          type: string
+        document_id:
+          title: Document Id
+          type: string
+      required:
+      - invoice_id
+      - invoice_number
+      - vendor_id
+      - vendor_name
+      - amount_cents
+      - currency
+      - due_date
+      - document_id
+      title: InvoiceSummary
+      type: object
+    JobProgress:
+      additionalProperties: false
+      properties:
+        completed:
+          title: Completed
+          type: integer
+        total:
+          title: Total
+          type: integer
+      required:
+      - completed
+      - total
+      title: JobProgress
+      type: object
+    JournalEntry:
+      additionalProperties: false
+      properties:
+        entry_id:
+          title: Entry Id
+          type: string
+        date:
+          format: date
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}$
+          title: Date
+          type: string
+        memo:
+          title: Memo
+          type: string
+        source:
+          $ref: '#/components/schemas/JournalSource'
+        created_by:
+          title: Created By
+          type: string
+        lines:
+          items:
+            $ref: '#/components/schemas/JournalLine'
+          title: Lines
+          type: array
+      required:
+      - entry_id
+      - date
+      - memo
+      - source
+      - created_by
+      - lines
+      title: JournalEntry
+      type: object
+    JournalLine:
+      additionalProperties: false
+      properties:
+        account_code:
+          title: Account Code
+          type: string
+        account_name:
+          title: Account Name
+          type: string
+        debit_cents:
+          title: Debit Cents
+          type: integer
+        credit_cents:
+          title: Credit Cents
+          type: integer
+      required:
+      - account_code
+      - account_name
+      - debit_cents
+      - credit_cents
+      title: JournalLine
+      type: object
+    JournalSource:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+          - invoice
+          - payment
+          - approval
+          - seed
+          - reversal
+          title: Kind
+          type: string
+        id:
+          title: Id
+          type: string
+      required:
+      - kind
+      - id
+      title: JournalSource
+      type: object
+    Lane:
+      enum:
+      - unguarded
+      - countersign
+      type: string
+      title: Lane
+    LaneStatusEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: lane.status
+          title: Type
+          type: string
+        lane:
+          enum:
+          - unguarded
+          - countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/LaneStatusPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: LaneStatusEvent
+      type: object
+    LaneStatusPayload:
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+          - running
+          - not_implemented
+          - failed
+          - completed
+          title: Status
+          type: string
+        detail:
+          title: Detail
+          type: string
+      required:
+      - status
+      title: LaneStatusPayload
+      type: object
+    LaneTally:
+      additionalProperties: false
+      properties:
+        paid_count:
+          title: Paid Count
+          type: integer
+        paid_cents:
+          title: Paid Cents
+          type: integer
+        held_count:
+          title: Held Count
+          type: integer
+        blocked_count:
+          title: Blocked Count
+          type: integer
+        not_on_file_count:
+          title: Not On File Count
+          type: integer
+        not_on_file_cents:
+          title: Not On File Cents
+          type: integer
+      required:
+      - paid_count
+      - paid_cents
+      - held_count
+      - blocked_count
+      - not_on_file_count
+      - not_on_file_cents
+      title: LaneTally
+      type: object
+    LeakGuard:
+      additionalProperties: false
+      properties:
+        strings_checked:
+          title: Strings Checked
+          type: integer
+        canaries_checked:
+          title: Canaries Checked
+          type: integer
+        matches:
+          title: Matches
+          type: integer
+      required:
+      - strings_checked
+      - canaries_checked
+      - matches
+      title: LeakGuard
+      type: object
+    LedgerPostedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: ledger.posted
+          title: Type
+          type: string
+        lane:
+          const: countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/LedgerPostedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: LedgerPostedEvent
+      type: object
+    LedgerPostedPayload:
+      additionalProperties: false
+      properties:
+        entry:
+          $ref: '#/components/schemas/JournalEntry'
+      required:
+      - entry
+      title: LedgerPostedPayload
+      type: object
+    Mode:
+      enum:
+      - live
+      - offline
+      - dry_run
+      type: string
+      title: Mode
+    Payment:
+      additionalProperties: false
+      properties:
+        transfer_id:
+          title: Transfer Id
+          type: string
+        transfer_status:
+          title: Transfer Status
+          type: string
+        from_account_id:
+          title: From Account Id
+          type: string
+        to_account_id:
+          title: To Account Id
+          type: string
+        to_display_number:
+          title: To Display Number
+          type: string
+        payee_label:
+          title: Payee Label
+          type: string
+        payee_on_file:
+          title: Payee On File
+          type: boolean
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        bank_mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Bank Mode
+          type: string
+      required:
+      - transfer_id
+      - transfer_status
+      - from_account_id
+      - to_account_id
+      - to_display_number
+      - payee_label
+      - payee_on_file
+      - amount_cents
+      - bank_mode
+      title: Payment
+      type: object
+    PaymentExecutedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: payment.executed
+          title: Type
+          type: string
+        lane:
+          enum:
+          - unguarded
+          - countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/PaymentExecutedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: PaymentExecutedEvent
+      type: object
+    PaymentExecutedPayload:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        via:
+          enum:
+          - policy
+          - approval
+          - agent
+          title: Via
+          type: string
+        payment:
+          $ref: '#/components/schemas/Payment'
+      required:
+      - invoice_id
+      - via
+      - payment
+      title: PaymentExecutedPayload
+      type: object
+    PaymentHeldEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: payment.held
+          title: Type
+          type: string
+        lane:
+          const: countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/PaymentHeldPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: PaymentHeldEvent
+      type: object
+    PaymentHeldPayload:
+      additionalProperties: false
+      properties:
+        invoice_id:
+          title: Invoice Id
+          type: string
+        approval_id:
+          title: Approval Id
+          type: string
+        reason_codes:
+          items:
+            enum:
+            - BANK_DETAILS_MISMATCH
+            - AMOUNT_MISMATCH
+            - UNKNOWN_VENDOR
+            - UNVERIFIED_SOURCE
+            - DUPLICATE_INVOICE
+            - PLANNER_INVALID
+            - POLICY_NOT_IMPLEMENTED
+            - OVER_AUTONOMY_LIMIT
+            type: string
+          title: Reason Codes
+          type: array
+      required:
+      - invoice_id
+      - approval_id
+      - reason_codes
+      title: PaymentHeldPayload
+      type: object
+    Person:
+      additionalProperties: false
+      properties:
+        person_id:
+          title: Person Id
+          type: string
+        name:
+          title: Name
+          type: string
+        role:
+          enum:
+          - ap_agent
+          - ap_manager
+          - controller
+          - vendor_admin
+          title: Role
+          type: string
+        approval_limit_cents:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Approval Limit Cents
+      required:
+      - person_id
+      - name
+      - role
+      - approval_limit_cents
+      title: Person
+      type: object
+    PlanArg:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+          - handle
+          - step
+          - trusted
+          - literal
+          title: Kind
+          type: string
+        ref:
+          title: Ref
+          type: string
+        value:
+          anyOf:
+          - type: string
+          - type: integer
+          - type: number
+          title: Value
+      required:
+      - kind
+      title: PlanArg
+      type: object
+    PlanProposedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: plan.proposed
+          title: Type
+          type: string
+        lane:
+          const: countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/PlanProposedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: PlanProposedEvent
+      type: object
+    PlanProposedPayload:
+      additionalProperties: false
+      properties:
+        planner_model:
+          title: Planner Model
+          type: string
+        prompt_hash:
+          title: Prompt Hash
+          type: string
+        steps:
+          items:
+            $ref: '#/components/schemas/PlanStep'
+          title: Steps
+          type: array
+      required:
+      - planner_model
+      - prompt_hash
+      - steps
+      title: PlanProposedPayload
+      type: object
+    PlanStep:
+      additionalProperties: false
+      properties:
+        id:
+          title: Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        op:
+          enum:
+          - resolve_vendor
+          - match_po
+          - due_within
+          - pay
+          - hold
+          - skip
+          title: Op
+          type: string
+        args:
+          additionalProperties:
+            $ref: '#/components/schemas/PlanArg'
+          title: Args
+          type: object
+      required:
+      - id
+      - invoice_id
+      - op
+      - args
+      title: PlanStep
+      type: object
+    PlannerCall:
+      additionalProperties: false
+      properties:
+        call_id:
+          title: Call Id
+          type: string
+        model:
+          title: Model
+          type: string
+        prompt:
+          title: Prompt
+          type: string
+        response:
+          title: Response
+          type: string
+        prompt_hash:
+          title: Prompt Hash
+          type: string
+      required:
+      - call_id
+      - model
+      - prompt
+      - response
+      - prompt_hash
+      title: PlannerCall
+      type: object
+    PlannerTranscript:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        calls:
+          items:
+            $ref: '#/components/schemas/PlannerCall'
+          title: Calls
+          type: array
+        leak_guard:
+          $ref: '#/components/schemas/LeakGuard'
+      required:
+      - run_id
+      - calls
+      - leak_guard
+      title: PlannerTranscript
+      type: object
+    PolicyCheck:
+      additionalProperties: false
+      properties:
+        code:
+          enum:
+          - VENDOR_KNOWN
+          - SPAN_VERIFIED
+          - PAYEE_ON_FILE
+          - AMOUNT_MATCHES_PO
+          - NOT_DUPLICATE
+          - INSTRUCTIONS_IN_DOCUMENT
+          - VENDOR_HISTORY
+          title: Code
+          type: string
+        passed:
+          title: Passed
+          type: boolean
+        message:
+          title: Message
+          type: string
+        evidence_node_ids:
+          items:
+            type: string
+          title: Evidence Node Ids
+          type: array
+      required:
+      - code
+      - passed
+      - message
+      - evidence_node_ids
+      title: PolicyCheck
+      type: object
+    PolicyDecision:
+      additionalProperties: false
+      properties:
+        decision_id:
+          title: Decision Id
+          type: string
+        run_id:
+          title: Run Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        outcome:
+          enum:
+          - ALLOW
+          - HOLD
+          - BLOCK
+          title: Outcome
+          type: string
+        checks:
+          items:
+            $ref: '#/components/schemas/PolicyCheck'
+          title: Checks
+          type: array
+        reason_codes:
+          items:
+            enum:
+            - BANK_DETAILS_MISMATCH
+            - AMOUNT_MISMATCH
+            - UNKNOWN_VENDOR
+            - UNVERIFIED_SOURCE
+            - DUPLICATE_INVOICE
+            - PLANNER_INVALID
+            - POLICY_NOT_IMPLEMENTED
+            - OVER_AUTONOMY_LIMIT
+            type: string
+          title: Reason Codes
+          type: array
+        approval_id:
+          title: Approval Id
+          type: string
+      required:
+      - decision_id
+      - run_id
+      - invoice_id
+      - outcome
+      - checks
+      - reason_codes
+      title: PolicyDecision
+      type: object
+    PolicyDecisionEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: policy.decision
+          title: Type
+          type: string
+        lane:
+          const: countersign
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/PolicyDecisionPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: PolicyDecisionEvent
+      type: object
+    PolicyDecisionPayload:
+      additionalProperties: false
+      properties:
+        decision:
+          $ref: '#/components/schemas/PolicyDecision'
+      required:
+      - decision
+      title: PolicyDecisionPayload
+      type: object
+    ProvenanceGraph:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        invoice_id:
+          title: Invoice Id
+          type: string
+        nodes:
+          items:
+            $ref: '#/components/schemas/GraphNode'
+          title: Nodes
+          type: array
+        edges:
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+          title: Edges
+          type: array
+      required:
+      - run_id
+      - invoice_id
+      - nodes
+      - edges
+      title: ProvenanceGraph
+      type: object
+    ReasonCode:
+      enum:
+      - BANK_DETAILS_MISMATCH
+      - AMOUNT_MISMATCH
+      - UNKNOWN_VENDOR
+      - UNVERIFIED_SOURCE
+      - DUPLICATE_INVOICE
+      - PLANNER_INVALID
+      - POLICY_NOT_IMPLEMENTED
+      - OVER_AUTONOMY_LIMIT
+      type: string
+      title: ReasonCode
+    Reconciliation:
+      additionalProperties: false
+      properties:
+        as_of:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: As Of
+          type: string
+        bank_balance_change_cents:
+          title: Bank Balance Change Cents
+          type: integer
+        ledger_cash_change_cents:
+          title: Ledger Cash Change Cents
+          type: integer
+        difference_cents:
+          title: Difference Cents
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/ReconciliationItem'
+          title: Items
+          type: array
+      required:
+      - as_of
+      - bank_balance_change_cents
+      - ledger_cash_change_cents
+      - difference_cents
+      - items
+      title: Reconciliation
+      type: object
+    ReconciliationItem:
+      additionalProperties: false
+      properties:
+        transfer_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transfer Id
+        journal_entry_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Journal Entry Id
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        status:
+          enum:
+          - matched
+          - bank_only
+          - ledger_only
+          title: Status
+          type: string
+        note:
+          title: Note
+          type: string
+      required:
+      - transfer_id
+      - journal_entry_id
+      - amount_cents
+      - status
+      title: ReconciliationItem
+      type: object
+    RedTeamJob:
+      additionalProperties: false
+      properties:
+        job_id:
+          title: Job Id
+          type: string
+        status:
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          title: Status
+          type: string
+        execution:
+          const: dry_run
+          title: Execution
+          type: string
+        mutator_model:
+          title: Mutator Model
+          type: string
+        progress:
+          $ref: '#/components/schemas/JobProgress'
+        metrics:
+          $ref: '#/components/schemas/RedTeamMetrics'
+        variants:
+          items:
+            $ref: '#/components/schemas/RedTeamVariant'
+          title: Variants
+          type: array
+      required:
+      - job_id
+      - status
+      - execution
+      - mutator_model
+      - progress
+      - variants
+      title: RedTeamJob
+      type: object
+    RedTeamMetrics:
+      additionalProperties: false
+      properties:
+        variants:
+          title: Variants
+          type: integer
+        unguarded_compromised:
+          title: Unguarded Compromised
+          type: integer
+        countersign_unauthorized:
+          title: Countersign Unauthorized
+          type: integer
+        countersign_held:
+          title: Countersign Held
+          type: integer
+        false_holds_on_controls:
+          title: False Holds On Controls
+          type: integer
+        distinct_planner_prompts:
+          title: Distinct Planner Prompts
+          type: integer
+      required:
+      - variants
+      - unguarded_compromised
+      - countersign_unauthorized
+      - countersign_held
+      - false_holds_on_controls
+      - distinct_planner_prompts
+      title: RedTeamMetrics
+      type: object
+    RedTeamRequest:
+      additionalProperties: false
+      properties:
+        variants:
+          maximum: 60
+          minimum: 10
+          title: Variants
+          type: integer
+        templates:
+          items:
+            type: string
+          title: Templates
+          type: array
+      required:
+      - variants
+      title: RedTeamRequest
+      type: object
+    RedTeamVariant:
+      additionalProperties: false
+      properties:
+        variant_id:
+          title: Variant Id
+          type: string
+        template:
+          title: Template
+          type: string
+        placement:
+          enum:
+          - visible_note
+          - hidden_white_text
+          - footer
+          title: Placement
+          type: string
+        text:
+          title: Text
+          type: string
+        mutator_model:
+          title: Mutator Model
+          type: string
+        unguarded_outcome:
+          enum:
+          - compromised
+          - safe
+          - error
+          title: Unguarded Outcome
+          type: string
+        countersign_outcome:
+          enum:
+          - held
+          - paid_on_file
+          - blocked
+          - error
+          title: Countersign Outcome
+          type: string
+      required:
+      - variant_id
+      - template
+      - placement
+      - text
+      - mutator_model
+      - unguarded_outcome
+      - countersign_outcome
+      title: RedTeamVariant
+      type: object
+    ResetResponse:
+      additionalProperties: false
+      properties:
+        session_started_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Session Started At
+          type: string
+      required:
+      - session_started_at
+      title: ResetResponse
+      type: object
+    Run:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        batch_id:
+          title: Batch Id
+          type: string
+        instruction:
+          title: Instruction
+          type: string
+        created_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Created At
+          type: string
+        lanes:
+          items:
+            $ref: '#/components/schemas/RunLane'
+          title: Lanes
+          type: array
+        tallies:
+          $ref: '#/components/schemas/RunTallies'
+      required:
+      - run_id
+      - batch_id
+      - instruction
+      - created_at
+      - lanes
+      title: Run
+      type: object
+    RunCompletedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: run.completed
+          title: Type
+          type: string
+        lane:
+          const: system
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/RunCompletedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: RunCompletedEvent
+      type: object
+    RunCompletedPayload:
+      additionalProperties: false
+      properties:
+        tallies:
+          $ref: '#/components/schemas/RunTallies'
+      required:
+      - tallies
+      title: RunCompletedPayload
+      type: object
+    RunEvent:
+      discriminator:
+        mapping:
+          agent.message: '#/components/schemas/AgentMessageEvent'
+          agent.tool_call: '#/components/schemas/AgentToolCallEvent'
+          approval.resolved: '#/components/schemas/ApprovalResolvedEvent'
+          document.loaded: '#/components/schemas/DocumentLoadedEvent'
+          error: '#/components/schemas/ErrorEvent'
+          fields.extracted: '#/components/schemas/FieldsExtractedEvent'
+          inbox.received: '#/components/schemas/InboxReceivedEvent'
+          lane.status: '#/components/schemas/LaneStatusEvent'
+          ledger.posted: '#/components/schemas/LedgerPostedEvent'
+          payment.executed: '#/components/schemas/PaymentExecutedEvent'
+          payment.held: '#/components/schemas/PaymentHeldEvent'
+          plan.proposed: '#/components/schemas/PlanProposedEvent'
+          policy.decision: '#/components/schemas/PolicyDecisionEvent'
+          run.completed: '#/components/schemas/RunCompletedEvent'
+          run.started: '#/components/schemas/RunStartedEvent'
+        propertyName: type
+      oneOf:
+      - $ref: '#/components/schemas/RunStartedEvent'
+      - $ref: '#/components/schemas/LaneStatusEvent'
+      - $ref: '#/components/schemas/DocumentLoadedEvent'
+      - $ref: '#/components/schemas/FieldsExtractedEvent'
+      - $ref: '#/components/schemas/PlanProposedEvent'
+      - $ref: '#/components/schemas/AgentToolCallEvent'
+      - $ref: '#/components/schemas/AgentMessageEvent'
+      - $ref: '#/components/schemas/PolicyDecisionEvent'
+      - $ref: '#/components/schemas/PaymentExecutedEvent'
+      - $ref: '#/components/schemas/PaymentHeldEvent'
+      - $ref: '#/components/schemas/ApprovalResolvedEvent'
+      - $ref: '#/components/schemas/ErrorEvent'
+      - $ref: '#/components/schemas/RunCompletedEvent'
+      - $ref: '#/components/schemas/LedgerPostedEvent'
+      - $ref: '#/components/schemas/InboxReceivedEvent'
+      title: RunEvent
+    RunLane:
+      additionalProperties: false
+      properties:
+        lane:
+          enum:
+          - unguarded
+          - countersign
+          title: Lane
+          type: string
+        status:
+          enum:
+          - running
+          - not_implemented
+          - failed
+          - completed
+          title: Status
+          type: string
+      required:
+      - lane
+      - status
+      title: RunLane
+      type: object
+    RunModels:
+      additionalProperties: false
+      properties:
+        extractor:
+          title: Extractor
+          type: string
+        planner:
+          title: Planner
+          type: string
+        unguarded:
+          title: Unguarded
+          type: string
+      required:
+      - extractor
+      - planner
+      - unguarded
+      title: RunModels
+      type: object
+    RunRequest:
+      additionalProperties: false
+      properties:
+        batch_id:
+          title: Batch Id
+          type: string
+        lanes:
+          items:
+            enum:
+            - unguarded
+            - countersign
+            type: string
+          title: Lanes
+          type: array
+        instruction:
+          title: Instruction
+          type: string
+      required:
+      - batch_id
+      - lanes
+      title: RunRequest
+      type: object
+    RunStartedEvent:
+      additionalProperties: false
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        seq:
+          title: Seq
+          type: integer
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          - dry_run
+          title: Mode
+          type: string
+        type:
+          const: run.started
+          title: Type
+          type: string
+        lane:
+          const: system
+          title: Lane
+          type: string
+        payload:
+          $ref: '#/components/schemas/RunStartedPayload'
+      required:
+      - run_id
+      - seq
+      - ts
+      - type
+      - lane
+      - payload
+      title: RunStartedEvent
+      type: object
+    RunStartedPayload:
+      additionalProperties: false
+      properties:
+        batch_id:
+          title: Batch Id
+          type: string
+        lanes:
+          items:
+            enum:
+            - unguarded
+            - countersign
+            type: string
+          title: Lanes
+          type: array
+        instruction:
+          title: Instruction
+          type: string
+        models:
+          $ref: '#/components/schemas/RunModels'
+      required:
+      - batch_id
+      - lanes
+      - instruction
+      - models
+      title: RunStartedPayload
+      type: object
+    RunTallies:
+      additionalProperties: false
+      properties:
+        unguarded:
+          $ref: '#/components/schemas/LaneTally'
+        countersign:
+          $ref: '#/components/schemas/LaneTally'
+      title: RunTallies
+      type: object
+    ServiceHealth:
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+          - ok
+          - offline
+          - missing_key
+          - error
+          title: Status
+          type: string
+        mode:
+          enum:
+          - live
+          - offline
+          title: Mode
+          type: string
+        detail:
+          title: Detail
+          type: string
+      required:
+      - status
+      - mode
+      title: ServiceHealth
+      type: object
+    ServicesHealth:
+      additionalProperties: false
+      properties:
+        nessie:
+          $ref: '#/components/schemas/ServiceHealth'
+        elastic:
+          $ref: '#/components/schemas/ServiceHealth'
+        anthropic:
+          $ref: '#/components/schemas/ServiceHealth'
+        gemini:
+          $ref: '#/components/schemas/ServiceHealth'
+        bitdeer:
+          $ref: '#/components/schemas/ServiceHealth'
+      required:
+      - nessie
+      - elastic
+      - anthropic
+      - gemini
+      - bitdeer
+      title: ServicesHealth
+      type: object
+    SessionTransfer:
+      additionalProperties: false
+      properties:
+        transfer_id:
+          title: Transfer Id
+          type: string
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        from_label:
+          title: From Label
+          type: string
+        ts:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Ts
+          type: string
+      required:
+      - transfer_id
+      - amount_cents
+      - from_label
+      - ts
+      title: SessionTransfer
+      type: object
+    SourceSpan:
+      additionalProperties: false
+      properties:
+        document_id:
+          title: Document Id
+          type: string
+        page:
+          title: Page
+          type: integer
+        line:
+          title: Line
+          type: integer
+        char_start:
+          title: Char Start
+          type: integer
+        char_end:
+          title: Char End
+          type: integer
+        quote:
+          title: Quote
+          type: string
+        span_verified:
+          title: Span Verified
+          type: boolean
+      required:
+      - document_id
+      - page
+      - line
+      - char_start
+      - char_end
+      - quote
+      - span_verified
+      title: SourceSpan
+      type: object
+    TrialBalance:
+      additionalProperties: false
+      properties:
+        as_of:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: As Of
+          type: string
+        balanced:
+          title: Balanced
+          type: boolean
+        accounts:
+          items:
+            $ref: '#/components/schemas/TrialBalanceAccount'
+          title: Accounts
+          type: array
+      required:
+      - as_of
+      - balanced
+      - accounts
+      title: TrialBalance
+      type: object
+    TrialBalanceAccount:
+      additionalProperties: false
+      properties:
+        account_code:
+          title: Account Code
+          type: string
+        account_name:
+          title: Account Name
+          type: string
+        debit_cents:
+          title: Debit Cents
+          type: integer
+        credit_cents:
+          title: Credit Cents
+          type: integer
+        balance_cents:
+          title: Balance Cents
+          type: integer
+      required:
+      - account_code
+      - account_name
+      - debit_cents
+      - credit_cents
+      - balance_cents
+      title: TrialBalanceAccount
+      type: object
+    VendorAccountHistory:
+      additionalProperties: false
+      properties:
+        account_display:
+          title: Account Display
+          type: string
+        valid_from:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Valid From
+          type: string
+        valid_to:
+          anyOf:
+          - format: date-time
+            pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+            type: string
+          - type: 'null'
+          title: Valid To
+        verified_by:
+          title: Verified By
+          type: string
+        verified_at:
+          format: date-time
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+]00:00)$
+          title: Verified At
+          type: string
+      required:
+      - account_display
+      - valid_from
+      - valid_to
+      - verified_by
+      - verified_at
+      title: VendorAccountHistory
+      type: object
+    VendorDetail:
+      additionalProperties: false
+      properties:
+        vendor_id:
+          title: Vendor Id
+          type: string
+        name:
+          title: Name
+          type: string
+        account_on_file_display:
+          title: Account On File Display
+          type: string
+        account_history:
+          items:
+            $ref: '#/components/schemas/VendorAccountHistory'
+          title: Account History
+          type: array
+        payments:
+          items:
+            $ref: '#/components/schemas/VendorPayment'
+          title: Payments
+          type: array
+      required:
+      - vendor_id
+      - name
+      - account_on_file_display
+      - account_history
+      - payments
+      title: VendorDetail
+      type: object
+    VendorPayment:
+      additionalProperties: false
+      properties:
+        date:
+          format: date
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}$
+          title: Date
+          type: string
+        amount_cents:
+          title: Amount Cents
+          type: integer
+        account_display:
+          title: Account Display
+          type: string
+        journal_entry_id:
+          title: Journal Entry Id
+          type: string
+      required:
+      - date
+      - amount_cents
+      - account_display
+      - journal_entry_id
+      title: VendorPayment
+      type: object
+  responses:
+    Error403:
+      description: '403: sod_violation'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: sod_violation
+    Error404:
+      description: '404: not_found'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: not_found
+    Error409:
+      description: '409: conflict'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: conflict
+    Error422:
+      description: '422: validation_error'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: validation_error
+    Error429:
+      description: '429: rate_limited'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: rate_limited
+    Error500:
+      description: '500: internal'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: internal
+    Error503:
+      description: '503: service_unavailable'
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - type: object
+              properties:
+                error:
+                  type: object
+                  properties:
+                    code:
+                      const: service_unavailable

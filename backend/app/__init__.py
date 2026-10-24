@@ -1,0 +1,1 @@
+"""Countersign backend application package."""

@@ -1,0 +1,128 @@
+{
+  "session_started_at": "2026-10-23T17:00:00Z",
+  "bank_mode": "offline",
+  "accounts": [
+    {
+      "role": "company",
+      "label": "Fogline Festival",
+      "account_id": "example-nessie-account-company",
+      "display_number": "700700007777",
+      "balance_cents": 1396000,
+      "received_this_session_cents": 0,
+      "transfers_this_session": []
+    },
+    {
+      "role": "vendor",
+      "label": "Harbor Light Rentals",
+      "account_id": "example-nessie-account-vendor-1",
+      "display_number": "100100001111",
+      "balance_cents": 350000,
+      "received_this_session_cents": 250000,
+      "transfers_this_session": [
+        {
+          "transfer_id": "example-nessie-transfer-1",
+          "amount_cents": 125000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:09Z"
+        },
+        {
+          "transfer_id": "example-nessie-transfer-6",
+          "amount_cents": 125000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:39Z"
+        }
+      ]
+    },
+    {
+      "role": "vendor",
+      "label": "Seabreeze Sound",
+      "account_id": "example-nessie-account-vendor-2",
+      "display_number": "200200002222",
+      "balance_cents": 270000,
+      "received_this_session_cents": 170000,
+      "transfers_this_session": [
+        {
+          "transfer_id": "example-nessie-transfer-2",
+          "amount_cents": 85000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:15Z"
+        },
+        {
+          "transfer_id": "example-nessie-transfer-7",
+          "amount_cents": 85000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:42Z"
+        }
+      ]
+    },
+    {
+      "role": "vendor",
+      "label": "Cedar Grove Catering",
+      "account_id": "example-nessie-account-vendor-3",
+      "display_number": "300300003333",
+      "balance_cents": 100000,
+      "received_this_session_cents": 0,
+      "transfers_this_session": []
+    },
+    {
+      "role": "vendor",
+      "label": "Northstar Security",
+      "account_id": "example-nessie-account-vendor-4",
+      "display_number": "400400004444",
+      "balance_cents": 184000,
+      "received_this_session_cents": 84000,
+      "transfers_this_session": [
+        {
+          "transfer_id": "example-nessie-transfer-4",
+          "amount_cents": 42000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:27Z"
+        },
+        {
+          "transfer_id": "example-nessie-transfer-8",
+          "amount_cents": 42000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:47Z"
+        }
+      ]
+    },
+    {
+      "role": "vendor",
+      "label": "Bluebird Print",
+      "account_id": "example-nessie-account-vendor-5",
+      "display_number": "500500005555",
+      "balance_cents": 136000,
+      "received_this_session_cents": 36000,
+      "transfers_this_session": [
+        {
+          "transfer_id": "example-nessie-transfer-5",
+          "amount_cents": 18000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:33Z"
+        },
+        {
+          "transfer_id": "example-nessie-transfer-9",
+          "amount_cents": 18000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:50Z"
+        }
+      ]
+    },
+    {
+      "role": "attacker",
+      "label": "Unverified remittance account",
+      "account_id": "example-nessie-account-attacker",
+      "display_number": "999900009999",
+      "balance_cents": 64000,
+      "received_this_session_cents": 64000,
+      "transfers_this_session": [
+        {
+          "transfer_id": "example-nessie-transfer-3",
+          "amount_cents": 64000,
+          "from_label": "Fogline Festival",
+          "ts": "2026-10-23T17:00:21Z"
+        }
+      ]
+    }
+  ]
+}

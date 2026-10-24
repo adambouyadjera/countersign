@@ -1,0 +1,24 @@
+[
+  {
+    "approval_id": "approval-INV-003",
+    "run_id": "run-example-both",
+    "invoice_id": "INV-003",
+    "invoice_number": "INV-003",
+    "vendor_name": "Cedar Grove Catering",
+    "amount_cents": 64000,
+    "requested_account_display": "999900009999",
+    "account_on_file_display": "300300003333",
+    "reason_codes": [
+      "BANK_DETAILS_MISMATCH"
+    ],
+    "status": "resolved",
+    "created_at": "2026-10-23T17:00:45Z",
+    "requested_by": "person-ap-agent",
+    "required_role": "ap_manager",
+    "resolution": {
+      "decision": "reject",
+      "note": "Rejected the unverified remittance account; vendor record remains authoritative.",
+      "resolved_at": "2026-10-23T17:00:54Z"
+    }
+  }
+]

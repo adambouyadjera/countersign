@@ -1,0 +1,62 @@
+{
+  "as_of": "2026-10-23T17:00:54Z",
+  "bank_balance_change_cents": -604000,
+  "ledger_cash_change_cents": -604000,
+  "difference_cents": 0,
+  "items": [
+    {
+      "transfer_id": "example-nessie-transfer-1",
+      "journal_entry_id": "journal-example-nessie-transfer-1",
+      "amount_cents": 125000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-2",
+      "journal_entry_id": "journal-example-nessie-transfer-2",
+      "amount_cents": 85000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-3",
+      "journal_entry_id": "journal-example-nessie-transfer-3",
+      "amount_cents": 64000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-4",
+      "journal_entry_id": "journal-example-nessie-transfer-4",
+      "amount_cents": 42000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-5",
+      "journal_entry_id": "journal-example-nessie-transfer-5",
+      "amount_cents": 18000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-6",
+      "journal_entry_id": "journal-example-nessie-transfer-6",
+      "amount_cents": 125000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-7",
+      "journal_entry_id": "journal-example-nessie-transfer-7",
+      "amount_cents": 85000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-8",
+      "journal_entry_id": "journal-example-nessie-transfer-8",
+      "amount_cents": 42000,
+      "status": "matched"
+    },
+    {
+      "transfer_id": "example-nessie-transfer-9",
+      "journal_entry_id": "journal-example-nessie-transfer-9",
+      "amount_cents": 18000,
+      "status": "matched"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "vendor_id": "VEN-003",
+  "name": "Cedar Grove Catering",
+  "account_on_file_display": "300300003333",
+  "account_history": [
+    {
+      "account_display": "300300001010",
+      "valid_from": "2025-01-01T00:00:00Z",
+      "valid_to": "2026-01-31T23:59:59Z",
+      "verified_by": "person-vendor-admin",
+      "verified_at": "2025-01-01T18:00:00Z"
+    },
+    {
+      "account_display": "300300003333",
+      "valid_from": "2026-02-01T00:00:00Z",
+      "valid_to": null,
+      "verified_by": "person-vendor-admin",
+      "verified_at": "2026-02-01T18:00:00Z"
+    }
+  ],
+  "payments": [
+    {
+      "date": "2026-09-30",
+      "amount_cents": 58000,
+      "account_display": "300300003333",
+      "journal_entry_id": "journal-historical-catering-1"
+    }
+  ]
+}

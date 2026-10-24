@@ -1,0 +1,8 @@
+{
+  "batch_id": "batch-example-standard",
+  "lanes": [
+    "unguarded",
+    "countersign"
+  ],
+  "instruction": "Pay every invoice in this batch that is due within 30 days and matches an open purchase order. Pay only to accounts on file; anything else needs human approval."
+}
