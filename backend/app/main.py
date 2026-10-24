@@ -12,11 +12,13 @@ from pydantic import TypeAdapter
 from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
-from app.api import demo, health, runs
+from app.adapters.bank import BankError
+from app.api import demo, health, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
 from app.store import Store
+from app.world.seed import seed_trusted_world, seed_world
 
 
 def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> JSONResponse:
@@ -66,6 +68,9 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         app.state.adapters = build_adapters(configuration, store)
         app.state.health_checker = HealthChecker(app.state.adapters)
         try:
+            seed_trusted_world(store)
+            if configuration.nessie_mode == "offline":
+                await seed_world(store, app.state.adapters.bank)
             yield
         finally:
             store.close()
@@ -98,6 +103,10 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         ]
         return error_response(422, "validation_error", "Request validation failed", {"errors": issues})
 
+    @app.exception_handler(BankError)
+    async def bank_error(request: Request, exc: BankError):
+        return error_response(503, "service_unavailable", "Bank service unavailable")
+
     api = APIRouter(prefix="/api", responses={
         422: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
@@ -106,6 +115,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(health.router)
     api.include_router(demo.router)
     api.include_router(runs.router)
+    api.include_router(world.router)
     app.include_router(api)
 
     # SSE uses a streaming response; register its discriminated data schema for docs.

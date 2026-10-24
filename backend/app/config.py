@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     naive_model: str = "Qwen/Qwen3.8-27B"
     mutator_model: str = "zai-org/GLM-5.3"
     nessie_api_key: SecretStr = SecretStr("")
-    nessie_base_url: str = "https://api.nessieisreal.com"
+    nessie_base_url: str = "https://prod-api.nessieisreal.com"
     nessie_mode: Literal["live", "offline"] = "live"
     elastic_url: str = ""
     elastic_api_key: SecretStr = SecretStr("")

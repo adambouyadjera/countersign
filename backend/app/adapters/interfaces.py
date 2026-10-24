@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from app.adapters.bank import BankBalance, BankTransfer
 from app.contract_models import (
     AgentTranscript,
     AuditAnswer,
@@ -34,10 +35,24 @@ class ServiceAdapter(Protocol):
 
 @runtime_checkable
 class BankAdapter(ServiceAdapter, Protocol):
+    async def get_balance(self, account_id: str) -> BankBalance: ...
+
+    async def list_transfers(self, account_id: str) -> list[BankTransfer]: ...
+
+    async def list_customers(self) -> list[dict[str, Any]]: ...
+
+    async def create_customer(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def list_accounts(self, customer_id: str) -> list[dict[str, Any]]: ...
+
+    async def create_account(self, customer_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+
     async def get_balances(self, session_started_at: datetime) -> Balances: ...
 
     async def transfer(
-        self, *, from_account_id: str, to_account_id: str, amount_cents: int
+        self, from_id: str | None = None, to_id: str | None = None,
+        amount_cents: int | None = None, description: str = "", *,
+        from_account_id: str | None = None, to_account_id: str | None = None,
     ) -> Payment: ...
 
 

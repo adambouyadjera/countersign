@@ -7,7 +7,6 @@ No implementation changes modes after a failed network request.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
 import logging
 import re
 from typing import Any, Literal, Protocol
@@ -19,11 +18,9 @@ from app.contract_models import (
     AgentTranscript,
     AuditAnswer,
     AuditAskRequest,
-    Balances,
     DocumentText,
     FieldsExtractedPayload,
     Handle,
-    Payment,
     Placement,
     PlanProposedPayload,
     RunEvent,
@@ -155,22 +152,8 @@ class _OfflineService:
         )
 
 
-class _BankOperations:
-    async def get_balances(self, session_started_at: datetime) -> Balances:
-        raise NotImplementedError("Bank balance reads are not implemented.")
-
-    async def transfer(
-        self, *, from_account_id: str, to_account_id: str, amount_cents: int
-    ) -> Payment:
-        raise NotImplementedError("Bank transfers are not implemented.")
-
-
-class LiveBankAdapter(_BankOperations, _LiveService):
-    pass
-
-
-class OfflineBankAdapter(_BankOperations, _OfflineService):
-    pass
+# Preserve the B1 import surface while the full bank implementation is isolated.
+from app.adapters.bank import LiveBankAdapter, OfflineBankAdapter
 
 
 class LiveAuditSink(_LiveService):
