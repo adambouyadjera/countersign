@@ -62,7 +62,7 @@ async def test_missing_keys_are_reported_without_network_and_protocols_match(sto
     assert set(result.model_dump()) == {"nessie", "elastic", "anthropic", "gemini", "bitdeer"}
     for name, health in result.model_dump().items():
         assert health["status"] == "missing_key"
-        assert health["mode"] == ("live" if name in {"nessie", "elastic", "gemini", "anthropic"} else "offline")
+        assert health["mode"] == "live"
         assert "not configured" in health["detail"]
     assert adapters.mutator.mode == "offline"
     with pytest.raises(NotImplementedError):

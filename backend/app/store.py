@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from app.contract_models import Person, PlannerTranscript, Run, RunEvent
+from app.contract_models import AgentTranscript, Person, PlannerTranscript, Run, RunEvent
 
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
@@ -29,6 +29,7 @@ _RECORD_TABLES = {
     "documents": "document_id",
     "extractions": "extraction_id",
     "planner_transcripts": "run_id",
+    "agent_transcripts": "transcript_id",
     "batches": "batch_id",
     "runs": "run_id",
     "decisions": "decision_id",
@@ -41,7 +42,7 @@ _RECORD_TABLES = {
     "transfers": "transfer_id",
     "redteam_jobs": "job_id",
 }
-_RUN_SCOPED_TABLES = {"decisions", "approvals", "transfers", "approval_contexts", "graphs"}
+_RUN_SCOPED_TABLES = {"decisions", "approvals", "transfers", "approval_contexts", "graphs", "agent_transcripts"}
 
 
 def _event_data(event: RunEvent | Mapping[str, Any]) -> dict[str, Any]:
@@ -143,6 +144,13 @@ class Store:
         elif table == "people":
             # A null approval limit is a required, meaningful unlimited value.
             data = Person.model_validate(record).model_dump(mode="json")
+        elif table == "agent_transcripts":
+            transcript = AgentTranscript.model_validate({
+                key: value for key, value in data.items() if key != "transcript_id"
+            })
+            if record_id != f"{transcript.run_id}:{transcript.invoice_id}":
+                raise ValueError("Transcript identity does not match its storage key")
+            data = {"transcript_id": record_id, **transcript.model_dump(mode="json")}
         encoded = json.dumps(data, separators=(",", ":"), allow_nan=False)
         key = _RECORD_TABLES[table]
         with self._lock:
@@ -212,6 +220,10 @@ class Store:
             return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
 
         for transfer in self.list_records("transfers"):
+            # Side-by-side lanes are independent experiments over the same
+            # invoice. Unguarded payments must not influence policy decisions.
+            if transfer.get("lane") == "unguarded" or transfer.get("via") == "agent":
+                continue
             if "session_started_at" in transfer:
                 if timestamp(transfer["session_started_at"]) != session:
                     continue
@@ -386,7 +398,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 for table in ("events", "decisions", "approvals", "approval_contexts", "approval_attempts",
-                              "session_payment_claims", "graphs", "planner_transcripts", "runs"):
+                              "session_payment_claims", "graphs", "planner_transcripts", "agent_transcripts", "runs"):
                     connection.execute(f"DELETE FROM {table}")
                 connection.execute(
                     "UPDATE metadata SET value = ? WHERE key = ?",

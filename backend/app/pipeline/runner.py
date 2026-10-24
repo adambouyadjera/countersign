@@ -22,6 +22,8 @@ from app.contract_models import (
 )
 from app.pipeline.extractor import ExtractorError
 from app.pipeline.planner import propose
+from app.pipeline.unguarded_agent import UnguardedAgent
+from app.pipeline.unguarded_tools import UnguardedTools
 from app.pipeline.payments import DuplicatePaymentError, PaymentExecutor, refresh_run_tallies
 from app.security.graph import build_graph
 from app.security.labels import DocumentSpan, Labeled
@@ -134,12 +136,12 @@ class RunManager:
         if record is None:
             raise HTTPException(404, "Batch not found")
         batch = Batch.model_validate(record)
-        lanes = ["countersign", *(["unguarded"] if "unguarded" in request.lanes else [])]
+        lanes = list(request.lanes)
         run = Run(
             run_id=f"run-{uuid4().hex}", batch_id=batch.batch_id,
             instruction=request.instruction if request.instruction is not None else DEFAULT_INSTRUCTION,
             created_at=datetime.now(timezone.utc),
-            lanes=[RunLane(lane=lane, status="running" if lane == "countersign" else "not_implemented") for lane in lanes],
+            lanes=[RunLane(lane=lane, status="running") for lane in lanes],
         )
         self.store.save_run(run)
         self.store.save_record("planner_transcripts", run.run_id, {
@@ -167,7 +169,7 @@ class RunManager:
             await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
         for run_id, _ in tasks:
             run = self.store.get_run(run_id)
-            if run is None or not any(lane.lane == "countersign" and lane.status == "running" for lane in run.lanes):
+            if run is None or not any(lane.status == "running" for lane in run.lanes):
                 continue
             # A task cancelled before its coroutine first executes cannot enter
             # that coroutine's finally block. Finalize that accepted run here.
@@ -175,7 +177,7 @@ class RunManager:
                 await self._started(run)
             await self._event(run_id, "error", {
                 "message": "Run interrupted before processing began (run).", "recoverable": False,
-            })
+            }, lane="system")
             await self._finish(run, LaneTally(
                 paid_count=0, paid_cents=0, held_count=0, blocked_count=0,
                 not_on_file_count=0, not_on_file_cents=0,
@@ -183,8 +185,13 @@ class RunManager:
         self._tasks.clear()
 
     async def _event(self, run_id: str, event_type: str, payload: dict, *, lane="countersign", mode=None):
+        if mode is None and lane == "system":
+            run = self.store.get_run(run_id)
+            active_modes = [self._unguarded_mode if item.lane == "unguarded" else self.mode
+                            for item in run.lanes] if run is not None else [self.mode]
+            mode = "offline" if "offline" in active_modes else "dry_run" if "dry_run" in active_modes else "live"
         return await self.bus.publish(run_id, {
-            "type": event_type, "lane": lane, "mode": mode or self.mode, "payload": payload,
+            "type": event_type, "lane": lane, "mode": mode or (self._unguarded_mode if lane == "unguarded" else self.mode), "payload": payload,
         })
 
     async def _started(self, run: Run) -> None:
@@ -192,21 +199,91 @@ class RunManager:
             "batch_id": run.batch_id, "lanes": [lane.lane for lane in run.lanes],
             "instruction": run.instruction,
             "models": {"extractor": getattr(self.adapters.extractor, "model", self.settings.extractor_model),
-                       "planner": self.adapters.planner.model, "unguarded": "not_implemented"},
+                       "planner": self.adapters.planner.model, "unguarded": self.adapters.agent.model},
         }, lane="system")
 
-    async def _finish(self, run: Run, tally: LaneTally, *, failed: bool) -> None:
-        final_status = "failed" if failed else "completed"
-        run.lanes = [RunLane(lane=lane.lane, status=final_status if lane.lane == "countersign" else "not_implemented") for lane in run.lanes]
-        run.tallies = RunTallies(countersign=tally)
+    @property
+    def _unguarded_mode(self):
+        if self.settings.unguarded_dry_run:
+            return "dry_run"
+        return "offline" if "offline" in {self.adapters.agent.mode, self.adapters.bank.mode} else "live"
+
+    async def _finish(self, run: Run, tally=None, *, failed=False, statuses=None) -> None:
+        statuses = statuses or {lane.lane: "failed" if failed else "completed" for lane in run.lanes}
+        run.lanes = [RunLane(lane=lane.lane, status=statuses[lane.lane]) for lane in run.lanes]
         self.store.save_run(run)
         refreshed = refresh_run_tallies(self.store, run.run_id)
         if refreshed is not None:
             run.tallies = refreshed.tallies
-        await self._event(run.run_id, "lane.status", {"status": final_status})
+        for lane in run.lanes:
+            await self._event(run.run_id, "lane.status", {"status": lane.status}, lane=lane.lane)
         await self._event(run.run_id, "run.completed", {"tallies": run.tallies.model_dump(mode="python")}, lane="system")
 
     async def _execute(self, run: Run, batch: Batch) -> None:
+        tasks = {}
+        statuses = {lane.lane: "failed" for lane in run.lanes}
+        try:
+            await self._started(run)
+            for lane in run.lanes:
+                await self._event(run.run_id, "lane.status", {"status": "running"}, lane=lane.lane)
+            for lane in run.lanes:
+                execute = self._countersign if lane.lane == "countersign" else self._unguarded
+                tasks[lane.lane] = asyncio.create_task(execute(run, batch), name=f"{run.run_id}:{lane.lane}")
+            results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+            for lane, result in zip(tasks, results):
+                statuses[lane] = "failed" if isinstance(result, BaseException) or result else "completed"
+                if isinstance(result, BaseException):
+                    await self._event(run.run_id, "error", {
+                        "message": f"Lane failed ({type(result).__name__}).", "recoverable": False,
+                    }, lane=lane)
+        except asyncio.CancelledError:
+            for task in tasks.values():
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks.values(), return_exceptions=True)
+            await self._event(run.run_id, "error", {
+                "message": "Run interrupted during shutdown (run).", "recoverable": False,
+            }, lane="system")
+        except Exception as error:
+            await self._event(run.run_id, "error", {
+                "message": f"Run failed ({type(error).__name__}).", "recoverable": False,
+            }, lane="system")
+        finally:
+            await self._finish(run, statuses=statuses)
+
+    async def _unguarded(self, run: Run, batch: Batch) -> bool:
+        failed = False
+        for invoice in batch.invoices:
+            try:
+                record = self.store.get_record("documents", invoice.document_id)
+                if record is None:
+                    raise ValueError("Missing document")
+                document = DocumentText.model_validate(record["text"])
+                if document.invoice_id != invoice.invoice_id:
+                    raise ValueError("Document identity mismatch")
+                await self._event(run.run_id, "document.loaded", {
+                    "invoice_id": invoice.invoice_id, "document_id": document.document_id,
+                    "pages": len(document.pages), "line_count": sum(len(page.lines) for page in document.pages),
+                }, lane="unguarded")
+                tools = UnguardedTools(self.store, self.bus, self.adapters.bank,
+                    run_id=run.run_id, invoice_id=invoice.invoice_id, vendor_id=invoice.vendor_id,
+                    dry_run=self.settings.unguarded_dry_run, effective_mode=self._unguarded_mode)
+                result = await UnguardedAgent(self.adapters.agent, tools, self.store, self.bus,
+                    max_steps=self.settings.agent_max_steps).run(
+                        run_id=run.run_id, instruction=run.instruction, document=document)
+                failed = failed or not result.completed
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                failed = True
+                await self._event(run.run_id, "error", {
+                    "message": f"Unguarded invoice processing failed ({type(error).__name__}).",
+                    "recoverable": True, "invoice_id": invoice.invoice_id,
+                }, lane="unguarded")
+        return failed
+
+    async def _countersign(self, run: Run, batch: Batch) -> bool:
         tally = LaneTally(paid_count=0, paid_cents=0, held_count=0, blocked_count=0,
                           not_on_file_count=0, not_on_file_cents=0)
         failed = False
@@ -214,12 +291,6 @@ class RunManager:
         documents = []
         table = HandleTable()
         try:
-            await self._started(run)
-            for lane in run.lanes:
-                await self._event(run.run_id, "lane.status", {
-                    "status": lane.status,
-                    **({"detail": "The unguarded lane is not implemented in B3."} if lane.lane == "unguarded" else {}),
-                }, lane=lane.lane)
             for position, invoice in enumerate(batch.invoices, 1):
                 progress = {"stage": "pdf_text"}
                 try:
@@ -301,7 +372,7 @@ class RunManager:
             # interpreter errors leave a durable hold for every pending invoice.
             for invoice in pending.values():
                 await self._hold(run, invoice, tally, ["PLANNER_INVALID"])
-            await self._finish(run, tally, failed=failed)
+        return failed
 
     def _classify_failure(self, error: Exception, stage: str) -> _InvoiceProcessingError:
         if isinstance(error, _InvoiceProcessingError):

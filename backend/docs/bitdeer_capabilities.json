@@ -1,0 +1,51 @@
+{
+  "model": "Qwen/Qwen3.8-27B",
+  "chosen_model": "Qwen/Qwen3.8-27B",
+  "available_models": [
+    "deepseek-ai/DeepSeek-V4.1-Flash",
+    "zai-org/GLM-5.3",
+    "Qwen/Qwen3.8-27B",
+    "zai-org/GLM-5.3-Flash",
+    "deepseek-ai/DeepSeek-V4-Flash",
+    "BAAI/bge-m3",
+    "BAAI/bge-reranker-v2-m3",
+    "seedream-5.0-lite"
+  ],
+  "probes": [
+    {
+      "model": "Qwen/Qwen3.8-27B",
+      "tool_calling": null,
+      "error_type": "APIStatusError",
+      "http_status": 402
+    },
+    {
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "tool_calling": null,
+      "error_type": "APIStatusError",
+      "http_status": 402
+    },
+    {
+      "model": "zai-org/GLM-5.3",
+      "tool_calling": null,
+      "error_type": "APIStatusError",
+      "http_status": 402
+    },
+    {
+      "model": "zai-org/GLM-5.3-Flash",
+      "tool_calling": null,
+      "error_type": "APIStatusError",
+      "http_status": 402
+    },
+    {
+      "model": "deepseek-ai/DeepSeek-V4-Flash",
+      "tool_calling": null,
+      "error_type": "APIStatusError",
+      "http_status": 402
+    }
+  ],
+  "tool_calling_supported": null,
+  "protocol": null,
+  "checked_at": "2026-10-24T17:01:10.099397+00:00",
+  "error": "inference_blocked_http_402",
+  "interpretation": "The catalog was available, but every attempted completion returned HTTP 402. Native tool support is unknown; no JSON fallback was justified."
+}

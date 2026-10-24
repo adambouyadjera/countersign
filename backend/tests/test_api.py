@@ -17,7 +17,7 @@ from app.main import create_app
 def application(tmp_path, monkeypatch):
     for field in Settings.model_fields:
         monkeypatch.delenv(field.upper(), raising=False)
-    settings = Settings(_env_file=None, nessie_mode="offline", elastic_mode="offline", extractor_mode="offline", planner_mode="offline")
+    settings = Settings(_env_file=None, nessie_mode="offline", elastic_mode="offline", extractor_mode="offline", planner_mode="offline", agent_mode="offline")
     return create_app(settings, db_path=tmp_path / "data" / "test.db")
 
 
