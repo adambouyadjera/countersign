@@ -1,0 +1,4 @@
+curl --fail --silent --show-error -X POST http://localhost:8000/api/batches -H 'Content-Type: application/json' -d '{"kind":"standard"}'
+curl --fail --silent --show-error -X POST http://localhost:8000/api/runs -H 'Content-Type: application/json' -d '{"batch_id":"batch-4e21d167421948f08b057231d9ac42d0","lanes":["countersign","unguarded"]}'
+curl --silent --show-error --no-buffer --max-time 3 http://localhost:8000/api/runs/run-34378044b8814fa58c5b25e1fdd32aa5/events -o docs/b3_curl_stream.sse
+curl --fail --silent --show-error http://localhost:8000/api/runs/run-34378044b8814fa58c5b25e1fdd32aa5

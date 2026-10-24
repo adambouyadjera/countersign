@@ -1,0 +1,12 @@
+id: 7
+event: payment.executed
+data: {"run_id":"run-34378044b8814fa58c5b25e1fdd32aa5","seq":7,"ts":"2026-10-24T04:47:25.717710Z","mode":"offline","type":"payment.executed","lane":"countersign","payload":{"invoice_id":"invoice-33951b731da4455aa37078a52d993c69","via":"policy","payment":{"transfer_id":"offline-transfer-22565a09ab2b4affa0488832eb80a187","transfer_status":"completed","from_account_id":"offline-account-915f7572bd6447adac3f4d7acdc7b93f","to_account_id":"offline-account-039829d37d104293a159f6b22ab39143","to_display_number":"100100001111","payee_label":"Harbor Light Rentals","payee_on_file":true,"amount_cents":125000,"bank_mode":"offline"}}}
+
+id: 15
+event: payment.held
+data: {"run_id":"run-34378044b8814fa58c5b25e1fdd32aa5","seq":15,"ts":"2026-10-24T04:47:25.719709Z","mode":"offline","type":"payment.held","lane":"countersign","payload":{"invoice_id":"invoice-bd0daafd9b0e48b6a9a42723a685b32b","approval_id":"approval-8e3f9a8ce234408fa6350273425d3d83","reason_codes":["BANK_DETAILS_MISMATCH"]}}
+
+id: 25
+event: run.completed
+data: {"run_id":"run-34378044b8814fa58c5b25e1fdd32aa5","seq":25,"ts":"2026-10-24T04:47:25.721786Z","mode":"offline","type":"run.completed","lane":"system","payload":{"tallies":{"countersign":{"paid_count":4,"paid_cents":270000,"held_count":1,"blocked_count":0,"not_on_file_count":0,"not_on_file_cents":0}}}}
+

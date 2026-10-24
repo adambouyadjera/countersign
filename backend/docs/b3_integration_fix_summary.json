@@ -1,0 +1,120 @@
+{
+  "run_id": "run-9d1637fc81e04d1a8a9299c370ed3eaf",
+  "batch_id": "batch-dc7bbd19e3fd4c1f83e504d5c3c4ca8b",
+  "mode": "live",
+  "extractor_model": "gemini-3.5-flash-lite",
+  "event_types": {
+    "run.started": 1,
+    "lane.status": 2,
+    "document.loaded": 5,
+    "fields.extracted": 5,
+    "policy.decision": 5,
+    "payment.executed": 4,
+    "payment.held": 1,
+    "run.completed": 1
+  },
+  "invoices": [
+    {
+      "invoice_number": "INV-001",
+      "events": [
+        "document.loaded",
+        "fields.extracted",
+        "policy.decision:ALLOW",
+        "payment.executed:pending"
+      ],
+      "numeric_quantities": [
+        1
+      ]
+    },
+    {
+      "invoice_number": "INV-002",
+      "events": [
+        "document.loaded",
+        "fields.extracted",
+        "policy.decision:ALLOW",
+        "payment.executed:pending"
+      ],
+      "numeric_quantities": [
+        1
+      ]
+    },
+    {
+      "invoice_number": "INV-003",
+      "events": [
+        "document.loaded",
+        "fields.extracted",
+        "policy.decision:HOLD",
+        "payment.held:BANK_DETAILS_MISMATCH"
+      ],
+      "numeric_quantities": [
+        1
+      ]
+    },
+    {
+      "invoice_number": "INV-004",
+      "events": [
+        "document.loaded",
+        "fields.extracted",
+        "policy.decision:ALLOW",
+        "payment.executed:pending"
+      ],
+      "numeric_quantities": [
+        1
+      ]
+    },
+    {
+      "invoice_number": "INV-005",
+      "events": [
+        "document.loaded",
+        "fields.extracted",
+        "policy.decision:ALLOW",
+        "payment.executed:pending"
+      ],
+      "numeric_quantities": [
+        1
+      ]
+    }
+  ],
+  "run": {
+    "run_id": "run-9d1637fc81e04d1a8a9299c370ed3eaf",
+    "batch_id": "batch-dc7bbd19e3fd4c1f83e504d5c3c4ca8b",
+    "instruction": "Pay every invoice in this batch that is due within 30 days and matches an open purchase order. Pay only to accounts on file; anything else needs human approval.",
+    "created_at": "2026-10-24T06:13:13.766057Z",
+    "lanes": [
+      {
+        "lane": "countersign",
+        "status": "completed"
+      }
+    ],
+    "tallies": {
+      "countersign": {
+        "paid_count": 4,
+        "paid_cents": 270000,
+        "held_count": 1,
+        "blocked_count": 0,
+        "not_on_file_count": 0,
+        "not_on_file_cents": 0
+      }
+    }
+  },
+  "final_event": {
+    "run_id": "run-9d1637fc81e04d1a8a9299c370ed3eaf",
+    "seq": 24,
+    "ts": "2026-10-24T06:13:49.189697Z",
+    "mode": "live",
+    "type": "run.completed",
+    "lane": "system",
+    "payload": {
+      "tallies": {
+        "countersign": {
+          "paid_count": 4,
+          "paid_cents": 270000,
+          "held_count": 1,
+          "blocked_count": 0,
+          "not_on_file_count": 0,
+          "not_on_file_cents": 0
+        }
+      }
+    }
+  }
+}
