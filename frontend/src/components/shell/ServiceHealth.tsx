@@ -4,8 +4,8 @@ import { useHealth } from '@/hooks/useHealth'
 import { cn } from '@/lib/cn'
 import { serviceWord } from '@/lib/serviceWord'
 
-// Order and names follow the contract's ServicesHealth schema.
-const SERVICES: readonly ServiceName[] = ['nessie', 'gemini', 'elastic', 'anthropic', 'bitdeer']
+// Order and names follow the contract's ServicesHealth schema. The optional v1.2 mutator entry isn't shown here.
+const SERVICES: readonly Exclude<ServiceName, 'mutator'>[] = ['nessie', 'gemini', 'elastic', 'anthropic', 'bitdeer']
 
 /** The header's right side: "nessie live · gemini live · elastic live …", from GET /api/health. */
 export function ServiceHealth({ className }: { className?: string }) {

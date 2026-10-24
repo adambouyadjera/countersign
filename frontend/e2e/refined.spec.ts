@@ -21,7 +21,7 @@ async function greyBoxes(page: Page): Promise<string[]> {
 }
 
 async function runBatch(page: Page) {
-  await page.goto('/')
+  await page.goto('/console')
   await page.getByRole('button', { name: 'new batch' }).click()
   await expect(page.getByRole('list', { name: 'Invoices in batch' }).getByRole('listitem')).toHaveCount(5)
   await page.keyboard.press('r')

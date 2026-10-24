@@ -74,7 +74,10 @@ export function AppShell() {
           <SigLogo />
         </Link>
         <nav aria-label="Main" className="flex flex-wrap gap-[18px]">
-          <NavLink to="/" end className={({ isActive }) => linkClass(isActive)}>
+          <NavLink to="/bank-change" className={({ isActive }) => linkClass(isActive)}>
+            Bank-change letter
+          </NavLink>
+          <NavLink to="/console" className={({ isActive }) => linkClass(isActive)}>
             console
           </NavLink>
           <CaseFilesLink />
@@ -85,7 +88,7 @@ export function AppShell() {
           ))}
         </nav>
         {/* The case file mockup's header has no autopilot status; it shows who you act as. */}
-        {!onCase && !redTeam && <AutopilotStatus interactive={pathname === '/'} />}
+        {!onCase && !redTeam && <AutopilotStatus interactive={pathname === '/console'} />}
         <QueueDrawer />
         <MockBadge />
         {onCase && <ActingAs className="ml-auto" />}

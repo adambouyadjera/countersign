@@ -101,6 +101,12 @@ export const resolveApproval = (approvalId: string, body: BodyJson<'resolve_appr
 // ── Bank ─────────────────────────────────────────────────────────────────────
 export const getBalances = () => json<OkJson<'get_balances'>>('GET', '/api/balances')
 
+// ── Recorded bank-change evidence (read-only, no live calls) ────────────────
+export const listBankChangeEvidence = () =>
+  json<OkJson<'list_bank_change_evidence'>>('GET', '/api/evidence/bank-change')
+export const getBankChangeEvidence = (runId: string) =>
+  json<OkJson<'get_bank_change_evidence'>>('GET', `/api/evidence/bank-change/${seg(runId)}`)
+
 // ── Red team and audit ───────────────────────────────────────────────────────
 export const createRedTeamJob = (body: BodyJson<'create_redteam_job'>) =>
   json<OkJson<'create_redteam_job'>>('POST', '/api/redteam', body)

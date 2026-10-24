@@ -5,6 +5,7 @@ import approvals from '@fixtures/approvals.json'
 import auditAnswer from '@fixtures/audit_answer.json'
 import autopilot from '@fixtures/autopilot.json'
 import balances from '@fixtures/balances.json'
+import bankChangeReplay from '@fixtures/bank_change_replay.json'
 import batch from '@fixtures/batch.json'
 import demoReset from '@fixtures/demo_reset.json'
 import documentInv003 from '@fixtures/document_INV-003.json'
@@ -30,6 +31,7 @@ export const fixtures = {
   auditAnswer,
   autopilot,
   balances,
+  bankChangeReplay,
   batch,
   demoReset,
   documentInv003,

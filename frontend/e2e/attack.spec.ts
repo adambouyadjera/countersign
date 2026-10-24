@@ -20,7 +20,7 @@ test('attack lab: draw vendors, write, send; autopilot is off in mock, so the la
   await expect(page.getByText('Autopilot is off, so sending also starts the run')).toBeVisible()
 
   await page.getByRole('button', { name: 'Send it to the AP inbox' }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/console$/)
   await expect(page.getByTestId('stream-status')).toContainText('run completed', { timeout: 30_000 })
   await expect(page.getByRole('list', { name: 'Invoices in batch' }).getByRole('listitem')).toHaveCount(5)
 })

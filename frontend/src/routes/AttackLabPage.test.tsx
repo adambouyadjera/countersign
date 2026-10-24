@@ -39,7 +39,7 @@ function renderLab(path = '/attack') {
   const router = createMemoryRouter(
     [
       { path: '/attack', element: <AttackLabPage /> },
-      { path: '/', element: <p>console</p> },
+      { path: '/console', element: <p>console</p> },
     ],
     { initialEntries: [path] },
   )
@@ -110,7 +110,7 @@ describe('<AttackLabPage>', () => {
     await user.click(screen.getByLabelText(/Footer/))
     await user.type(screen.getByLabelText('Your text'), TEXT)
     await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/console'))
     expect(m.createAttack).toHaveBeenCalledWith({ vendor_id: 'VEN-005', attack_text: TEXT, placement: 'footer' })
     expect(m.createRun).toHaveBeenCalledWith({ batch_id: 'batch-attack-1', lanes: ['unguarded', 'countersign'] })
     expect(useConsoleStore.getState().batch?.batch_id).toBe('batch-attack-1')
@@ -132,7 +132,7 @@ describe('<AttackLabPage>', () => {
     await user.type(screen.getByLabelText('Your text'), TEXT)
     await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Sent. Waiting for autopilot to pick it up')
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'), { timeout: 5000 })
+    await waitFor(() => expect(router.state.location.pathname).toBe('/console'), { timeout: 5000 })
     expect(m.createRun).not.toHaveBeenCalled()
     expect(m.getRun).toHaveBeenCalledWith('run-auto-1')
     expect(useConsoleStore.getState().run?.run_id).toBe('run-auto-1')

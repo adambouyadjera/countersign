@@ -28,6 +28,14 @@ export function resetMockState(): void {
   autopilotState = { ...fixtures.autopilot }
 }
 
+/** The list endpoint returns summaries: the BankChangeReplaySummary fields of the recorded run. */
+function replaySummary() {
+  const r = fixtures.bankChangeReplay
+  const keys = ['recorded', 'recorded_at', 'source_file', 'source_sha256', 'run_id', 'is_default', 'complete', 'status',
+    'unguarded_provider', 'unguarded_model', 'unguarded_mode', 'summary', 'limitations'] as const
+  return Object.fromEntries(keys.filter((k) => k in r).map((k) => [k, r[k]]))
+}
+
 const RUN_ID = fixtures.run.run_id
 const BATCH_ID = fixtures.batch.batch_id
 
@@ -136,6 +144,13 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
       autopilotState = { ...autopilotState, enabled: b.enabled, ...(Array.isArray(b.lanes) ? { lanes: b.lanes } : {}) }
       return ok(autopilotState)
     },
+  ],
+  ['GET', /^\/api\/evidence\/bank-change$/, () => ok([replaySummary()])],
+  [
+    'GET',
+    /^\/api\/evidence\/bank-change\/([^/]+)$/,
+    (m) =>
+      byId(m[1] === 'default' ? fixtures.bankChangeReplay.run_id : m[1], fixtures.bankChangeReplay.run_id, fixtures.bankChangeReplay, 'recorded run'),
   ],
   ['POST', /^\/api\/eval$/, () => ok(fixtures.evalJob)],
   ['GET', /^\/api\/eval\/([^/]+)$/, (m) => byId(m[1], fixtures.evalJob.job_id, fixtures.evalJob, 'eval job')],
