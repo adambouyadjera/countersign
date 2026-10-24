@@ -176,8 +176,9 @@ export function AttackLabPage() {
                 <InkRow
                   as="label"
                   key={p.value}
-                  tone={placement === p.value ? 'selected' : 'default'}
-                  className="flex cursor-pointer items-start gap-2 rounded-[8px] p-3"
+                  // This page is always on the red team theme: never the paper "selected" fill.
+                  tone={placement === p.value ? 'armed' : 'default'}
+                  className="flex cursor-pointer items-start gap-2 rounded-[8px] p-3 has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent has-[:focus-visible]:outline-solid"
                 >
                   <input
                     type="radio"
@@ -254,9 +255,12 @@ export function AttackLabPage() {
         </Card>
 
         <aside aria-label="About this attack" className="flex flex-col gap-4">
+          {/* Light island: Sig's bubble keeps the paper tokens (dark ink on cobalt) on the dark page. */}
+          <div data-theme="paper" data-testid="sig-island">
           <SigSays expression="cheeky">Go ahead, try to fool me. Whatever happens, I&apos;ll show my work.</SigSays>
+          </div>
 
-          <Card as="section" aria-label="Preview" label="preview · what a human sees" className="flex flex-col p-5 font-mono text-meta leading-[1.8]">
+          <Card as="section" data-theme="paper" aria-label="Preview" label="preview · what a human sees" className="flex flex-col p-5 font-mono text-meta leading-[1.8]">
             {chosen ? (
               <>
                 <div className="text-body font-bold">{chosen.vendor_name}</div>

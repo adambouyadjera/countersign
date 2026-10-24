@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
-export type InkButtonVariant = 'primary' | 'secondary' | 'danger'
+export type InkButtonVariant = 'primary' | 'secondary' | 'danger' | 'launch'
 
 export interface InkButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: InkButtonVariant
@@ -13,8 +13,11 @@ export interface InkButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> 
 const VARIANT: Record<InkButtonVariant, string> = {
   primary:
     'border-[1.5px] border-solid border-ink bg-accent text-on-accent shadow-[var(--button-shadow)] hover:bg-[color-mix(in_srgb,var(--accent)_88%,black)]',
-  secondary: 'border-[1.5px] border-solid border-ink bg-card text-fg shadow-[var(--inner-shadow)] hover:bg-inner',
+  secondary: 'border-[1.5px] border-solid border-[var(--inner-edge)] bg-card text-fg shadow-[var(--inner-shadow)] hover:bg-inner',
   danger: 'border-[1.5px] border-dashed border-bad bg-card text-bad hover:bg-bad-bg',
+  // The Attack Lab's launch button: red, light outline, hard light shadow, display type.
+  launch:
+    'border-2 border-solid border-ink bg-[var(--red,var(--bad))] text-[var(--bg)] shadow-[var(--button-shadow)] font-display font-extrabold hover:brightness-110',
 }
 
 const SIZE = {
