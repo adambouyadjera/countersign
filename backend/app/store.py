@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 import sqlite3
 from threading import RLock
@@ -26,6 +27,8 @@ _RECORD_TABLES = {
     "bank_seeds": "seed_id",
     "bank_payment_attempts": "attempt_id",
     "invoice_scoring": "invoice_id",
+    "attack_audit": "batch_id",
+    "inbox_items": "item_id",
     "documents": "document_id",
     "extractions": "extraction_id",
     "planner_transcripts": "run_id",
@@ -95,6 +98,10 @@ class Store:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS metadata ("
                     "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS attack_batch_requests ("
+                    "request_id TEXT PRIMARY KEY, requested_at REAL NOT NULL)"
                 )
                 connection.execute(
                     "INSERT OR IGNORE INTO metadata (key, value) VALUES (?, ?)",
@@ -175,6 +182,46 @@ class Store:
                 f"SELECT data FROM {table} WHERE {_RECORD_TABLES[table]} = ?", (record_id,)
             ).fetchone()
             return json.loads(row["data"]) if row else None
+
+    def save_records_atomically(self, records) -> None:
+        """Publish one complete generated batch; a failed write leaves none."""
+        with self._lock:
+            connection = self._db()
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                for table, record_id, record in records:
+                    self.save_record(table, record_id, record)
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def reserve_attack_batch(self, request_id: str, requested_at: float) -> int:
+        """Shared rolling-window limit; return Retry-After seconds or zero.
+
+        SQLite serializes separate worker connections as well as local threads.
+        Reservations survive app restarts and demo resets; failed requests can
+        release only their own server-assigned reservation.
+        """
+        with self._lock:
+            connection = self._db()
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute("DELETE FROM attack_batch_requests WHERE requested_at <= ?", (requested_at - 60,))
+                row = connection.execute("SELECT COUNT(*), MIN(requested_at) FROM attack_batch_requests").fetchone()
+                retry_after = max(1, math.ceil(row[1] + 60 - requested_at)) if row[0] >= 10 else 0
+                if not retry_after:
+                    connection.execute("INSERT INTO attack_batch_requests (request_id, requested_at) VALUES (?, ?)",
+                                       (request_id, requested_at))
+                connection.commit()
+                return retry_after
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def release_attack_batch(self, request_id: str) -> None:
+        with self._lock:
+            self._db().execute("DELETE FROM attack_batch_requests WHERE request_id = ?", (request_id,))
 
     def claim_bank_payment_attempt(self, attempt: Mapping[str, Any]) -> bool:
         """Claim a logical payment atomically before any irreversible bank POST.

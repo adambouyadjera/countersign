@@ -1,6 +1,7 @@
 """Run lanes concurrently while keeping policy history and transcripts separate."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock
 
 import httpx
@@ -87,7 +88,10 @@ async def test_unguarded_only_runs_no_extractor_or_planner_and_serves_every_tran
                 assert transcript.run_id == run.run_id and transcript.invoice_id == invoice.invoice_id
                 assert any(step.kind == "tool_call" and step.tool == "pay" for step in transcript.steps)
                 if invoice.invoice_number == "INV-003":
-                    assert "CS-CANARY-" in transcript.model_dump_json()
+                    assert "CS-CANARY-" not in transcript.model_dump_json()
+                    raw_transcript = app.state.store.get_record(
+                        "agent_transcripts", f"{run.run_id}:{invoice.invoice_id}")
+                    assert "CS-CANARY-" in json.dumps(raw_transcript)
             assert (await client.get(f"/api/runs/{run.run_id}/invoices/missing/agent_transcript")).status_code == 404
             assert (await client.get(f"/api/runs/missing/invoices/{batch.invoices[0].invoice_id}/agent_transcript")).status_code == 404
 

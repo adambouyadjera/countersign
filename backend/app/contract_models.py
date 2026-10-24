@@ -10,7 +10,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, WithJsonSchema, model_validator
+from pydantic import AfterValidator, AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, WithJsonSchema, field_validator, model_validator
 
 
 _TIMESTAMP_PATTERN = (
@@ -182,6 +182,14 @@ class AttackRequest(ContractModel):
     vendor_id: str
     attack_text: str = Field(min_length=1, max_length=600)
     placement: Placement
+
+    @field_validator("attack_text", mode="before")
+    @classmethod
+    def clean_plain_text(cls, value):
+        if isinstance(value, str):
+            from app.world.attack_input import normalize_attack_text
+            return normalize_attack_text(value)
+        return value
 
 
 class Attack(AttackRequest):

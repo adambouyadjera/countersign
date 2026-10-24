@@ -6,6 +6,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.contract_models import AgentTranscript, Batch, ErrorResponse, PlannerTranscript, PolicyDecision, ProvenanceGraph, Run, RunRequest
 from app.security.graph import overlay_resolution
+from app.security.presentation import display_model
 
 
 router = APIRouter()
@@ -31,7 +32,7 @@ async def get_run(run_id: str, request: Request) -> Run:
 async def get_run_decisions(run_id: str, request: Request) -> list[PolicyDecision]:
     if request.app.state.store.get_run(run_id) is None:
         raise HTTPException(404, "Run not found")
-    return [PolicyDecision.model_validate(record) for record in request.app.state.store.list_records("decisions", run_id=run_id)]
+    return [display_model(PolicyDecision.model_validate(record)) for record in request.app.state.store.list_records("decisions", run_id=run_id)]
 
 
 @router.get("/runs/{run_id}/planner_transcript", response_model=PlannerTranscript,
@@ -64,7 +65,7 @@ async def get_agent_transcript(run_id: str, invoice_id: str, request: Request) -
     # using today's configured endpoint.
     if not payload.get("provider"):
         payload["provider"] = "legacy_unknown"
-    return AgentTranscript.model_validate(payload)
+    return display_model(AgentTranscript.model_validate(payload))
 
 
 @router.get("/runs/{run_id}/invoices/{invoice_id}/graph", response_model=ProvenanceGraph,
@@ -84,7 +85,7 @@ async def get_invoice_graph(run_id: str, invoice_id: str, request: Request) -> P
     graph = ProvenanceGraph.model_validate({key: value for key, value in record.items() if key != "graph_id"})
     if graph.run_id != run_id or graph.invoice_id != invoice_id:
         raise HTTPException(404, "Provenance graph is not available")
-    return overlay_resolution(graph, store.list_events(run_id), store.list_records("approvals", run_id=run_id))
+    return display_model(overlay_resolution(graph, store.list_events(run_id), store.list_records("approvals", run_id=run_id)))
 
 
 @router.get(
@@ -107,7 +108,7 @@ async def get_run_events(
     async def messages() -> AsyncIterator[ServerSentEvent]:
         async for event in request.app.state.event_bus.subscribe(run_id, last_event_id):
             yield ServerSentEvent(
-                id=str(event.seq), event=event.type, data=event.model_dump_json()
+                id=str(event.seq), event=event.type, data=display_model(event).model_dump_json()
             )
 
     return EventSourceResponse(

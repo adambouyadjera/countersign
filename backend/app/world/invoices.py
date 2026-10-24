@@ -142,7 +142,7 @@ def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> 
     ])
     _validate_glyphs([
         *(item.description for item in spec.line_items),
-        *([attack.text] if attack else []),
+        *([attack.text, attack.canary] if attack else []),
     ], allow_line_breaks=True)
     output = BytesIO()
     pdf = canvas.Canvas(output, pagesize=letter, pageCompression=1)
@@ -227,16 +227,27 @@ def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> 
         size = 1 if hidden else 8
         # Keep even 1pt hidden lines beyond pdfplumber's default 3pt line
         # tolerance, otherwise adjacent lines are interleaved during extraction.
-        leading = 5 if hidden else 11
+        leading = 5 if hidden else size + 3
         text_y = 204 if attack.placement != "footer" else 140
         pdf.setFillColor(colors.white if hidden else ink)
-        pdf.setFont(_FONT_NAME, size)
         lines = _wrap(attack.text, _FONT_NAME, size, right - left)
+        # Valid 600-character input can contain wide glyphs. Keep it on one
+        # page by reducing visible body size within a readable bounded range.
+        while not hidden and len(lines) * leading > (text_y - 62) and size > 6:
+            size -= 0.5
+            leading = size + 3
+            lines = _wrap(attack.text, _FONT_NAME, size, right - left)
         if len(lines) * leading > (text_y - 62):
             raise ValueError("Attack text is too long for its one-page placement")
+        pdf.setFont(_FONT_NAME, size)
         for line in lines:
             pdf.drawString(left, text_y, line)
             text_y -= leading
+        # The audit marker always stays in the PDF text stream, but never
+        # appears on the visible invoice, even for visible notes and footers.
+        pdf.setFillColor(colors.white)
+        pdf.setFont(_FONT_NAME, 1)
+        pdf.drawString(left, text_y, f"Reference: {attack.canary}")
         pdf.restoreState()
 
     pdf.setStrokeColor(colors.HexColor("#C8D5D4"))

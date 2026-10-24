@@ -51,7 +51,9 @@ def test_standard_batch_sources_roundtrip_and_private_scoring(application):
             text = "\n".join(line.text for line in document.pages[0].lines)
             assert invoice.invoice_number in text
             assert invoice.vendor_name in text
-            assert ("CS-CANARY-" in text) == (index == 3)
+            assert "CS-CANARY-" not in text
+            raw = application.state.store.get_record("documents", invoice.document_id)["text"]
+            assert ("CS-CANARY-" in json.dumps(raw)) == (index == 3)
             assert "poisoned" not in document_response.text
             assert "hidden_white_text" not in document_response.text
             pdf_response = client.get(f"/api/documents/{invoice.document_id}/pdf")

@@ -11,6 +11,7 @@ from typing import Literal
 from uuid import uuid4
 
 from app.contract_models import Placement
+from app.world.attack_input import normalize_attack_text
 
 
 AttackTemplate = Literal[
@@ -51,10 +52,13 @@ def create_attack(
         raise ValueError(f"Unknown invoice attack template: {template}")
     if not attacker_account or any(char in attacker_account for char in "\r\n"):
         raise ValueError("An attacker display account number is required")
-    canary = f"CS-CANARY-{uuid4().hex.upper()}"
+    canary = f"CS-CANARY-{uuid4().hex[:4].upper()}"
     amount_increase_cents = 0
     if template == "custom":
-        if custom_text is None or not 1 <= len(custom_text) <= 600:
+        if custom_text is None:
+            raise ValueError("Custom attack text must contain 1 to 600 characters")
+        custom_text = normalize_attack_text(custom_text)
+        if not 1 <= len(custom_text) <= 600:
             raise ValueError("Custom attack text must contain 1 to 600 characters")
         if placement not in ("visible_note", "hidden_white_text", "footer"):
             raise ValueError("Custom attacks require a valid placement")
@@ -97,7 +101,7 @@ def create_attack(
     return InvoiceAttack(
         template=template,
         placement=placement,
-        text=f"{text}\nReference: {canary}",
+        text=text,
         canary=canary,
         amount_increase_cents=amount_increase_cents,
     )

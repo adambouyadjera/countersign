@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.contract_models import Batch, BatchRequest, Balances, DocumentText, ErrorResponse
 from app.world.batches import create_bank_change_batch, create_standard_batch
+from app.security.presentation import display_model
 
 
 router = APIRouter()
@@ -41,7 +42,7 @@ def _document(request: Request, document_id: str) -> dict:
     responses={404: {"model": ErrorResponse}},
 )
 async def get_document(document_id: str, request: Request) -> DocumentText:
-    return DocumentText.model_validate(_document(request, document_id)["text"])
+    return display_model(DocumentText.model_validate(_document(request, document_id)["text"]))
 
 
 @router.get(
