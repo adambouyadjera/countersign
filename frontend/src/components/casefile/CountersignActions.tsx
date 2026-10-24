@@ -4,7 +4,7 @@ import { resolveApproval } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import type { Approval, ApprovalDecision, Person } from '@/api/types'
 import { RequestError } from '@/components/console/RequestError'
-import { Button } from '@/components/ui'
+import { InkButton, InkRow } from '@/components/ui'
 import { lastFour, maskAccount } from '@/lib/account'
 import { ROLE_LABEL } from '@/lib/roles'
 
@@ -57,21 +57,22 @@ export function CountersignActions({ approval, actor, people }: CountersignActio
   const disabled = !actor || resolve.isPending
   return (
     <div className="flex flex-col gap-2.5">
-      <Button onClick={() => resolve.mutate({ decision: 'pay_vendor_on_file' })} disabled={disabled}>
+      <InkButton onClick={() => resolve.mutate({ decision: 'pay_vendor_on_file' })} disabled={disabled}>
         Pay {maskAccount(approval.account_on_file_display)}, the account on file
-      </Button>
+      </InkButton>
       {!confirming ? (
-        <Button
-          variant="quiet"
-          className="!border-bad-line !bg-card !text-bad"
+        <InkButton
+          variant="danger"
           onClick={() => setConfirming(true)}
           disabled={disabled}
         >
           Approve the new account…
-        </Button>
+        </InkButton>
       ) : (
-        <form
-          className="flex flex-col gap-2 rounded-[8px] border border-bad-line bg-bad-bg p-3"
+        <InkRow
+          as="form"
+          tone="untrusted"
+          className="flex flex-col gap-2 p-3"
           onSubmit={(e) => {
             e.preventDefault()
             resolve.mutate({ decision: 'approve_new_account', confirm_last4: last4 })
@@ -87,33 +88,33 @@ export function CountersignActions({ approval, actor, people }: CountersignActio
               maxLength={4}
               value={last4}
               onChange={(e) => setLast4(e.target.value.replace(/\D/g, ''))}
-              className="w-[8ch] rounded-[6px] border border-bad-line bg-card px-2 font-mono text-fg"
+              className="ink-field w-[8ch] px-2 font-mono text-fg"
             />
-            <Button size="sm" type="submit" disabled={disabled || last4.length !== 4}>
+            <InkButton size="sm" type="submit" disabled={disabled || last4.length !== 4}>
               approve
-            </Button>
-            <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
+            </InkButton>
+            <InkButton size="sm" variant="secondary" onClick={() => setConfirming(false)}>
               cancel
-            </Button>
+            </InkButton>
           </div>
           {last4.length === 4 && last4 !== lastFour(approval.requested_account_display) && (
             <p className="m-0 text-meta text-bad">That doesn't match the requested account.</p>
           )}
-        </form>
+        </InkRow>
       )}
-      <Button variant="quiet" className="!bg-card" onClick={() => resolve.mutate({ decision: 'reject' })} disabled={disabled}>
+      <InkButton variant="secondary" onClick={() => resolve.mutate({ decision: 'reject' })} disabled={disabled}>
         Reject
-      </Button>
+      </InkButton>
       <p className="m-0 text-meta text-muted">
         Needs {/^[aeiou]/i.test(ROLE_LABEL[approval.required_role]) ? 'an' : 'a'} {ROLE_LABEL[approval.required_role]}.{' '}
         {requesterName} requested this payment, so {requesterName} can't approve it.
         {actor && <> Acting as {actor.name}.</>}
       </p>
       {sod ? (
-        <div role="alert" data-testid="sod-banner" className="rounded-[8px] border border-bad-line bg-bad-bg px-3.5 py-2.5">
+        <InkRow tone="failed" role="alert" data-testid="sod-banner" className="px-3.5 py-2.5">
           <p className="m-0 font-bold text-bad">Segregation of duties: not allowed</p>
           <p className="m-0 text-small">{err.message}</p>
-        </div>
+        </InkRow>
       ) : (
         err && <RequestError title="Could not record the decision" error={err} />
       )}

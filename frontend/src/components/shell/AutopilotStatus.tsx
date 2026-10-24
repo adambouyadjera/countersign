@@ -49,8 +49,8 @@ export function AutopilotStatus({ interactive = false }: { interactive?: boolean
         <span
           aria-hidden
           className={cn(
-            'relative inline-block h-5 w-9 rounded-full border transition-colors',
-            on ? 'border-good bg-good' : 'border-line bg-panel',
+            'relative inline-block h-5 w-9 rounded-full border-[1.5px] transition-colors',
+            on ? 'border-ink bg-good' : 'border-ink bg-panel',
           )}
         >
           <span

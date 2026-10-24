@@ -20,7 +20,7 @@ export function ActingAs({ className }: { className?: string }) {
         value={person?.person_id ?? ''}
         onChange={(e) => setActingAs(e.target.value)}
         disabled={!people.data}
-        className="rounded-[6px] border border-line bg-card px-2 py-1 font-[inherit] font-bold text-fg"
+        className="ink-field px-2 py-1 font-[inherit] font-bold text-fg"
       >
         {!people.data && <option value="">…</option>}
         {people.data?.map((p) => (

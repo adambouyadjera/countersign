@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { HandleChip } from '@/components/ui'
+import { Card, HandleChip } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import type { CheckRound, PlannerRound, Round } from '@/lib/rounds'
 
@@ -30,12 +30,15 @@ function Line({ who, children, className }: { who?: 'invoice' | 'sig'; children:
 }
 
 function ChecksRound({ round, extra }: { round: CheckRound; extra?: ReactNode }) {
+  const Box = round.failed ? Card : 'div'
   return (
-    <div
+    // A lost round is untrusted content, so it gets the dashed red card; won rounds are plain lines.
+    <Box
+      {...(round.failed ? { tone: 'untrusted' as const } : {})}
       data-round={round.number}
       data-topic={round.topic}
       data-failed={round.failed ? 'true' : 'false'}
-      className={cn(round.failed && 'rounded-[8px] border border-bad-line bg-bad-bg px-4 py-3')}
+      className={cn(round.failed && 'px-4 py-3')}
     >
       <div className={round.failed ? 'text-bad' : 'text-accent'}>
         ⚔ round {round.number} · {round.title}
@@ -64,7 +67,7 @@ function ChecksRound({ round, extra }: { round: CheckRound; extra?: ReactNode })
             ✗ {c.code} · {c.message}
           </Line>
         ))}
-    </div>
+    </Box>
   )
 }
 
@@ -114,10 +117,7 @@ function PlannerRoundView({
 
 export function DuelTranscript({ rounds, extraLines, leakGuard, handleInvoice, empty }: DuelTranscriptProps) {
   return (
-    <section
-      aria-label="Duel transcript"
-      className="flex min-h-0 flex-col gap-3 overflow-y-auto border-l border-line pl-[18px]"
-    >
+    <Card as="section" aria-label="Duel transcript" className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 py-3.5">
       {rounds.length === 0 ? (
         <p className="m-0 text-muted">{empty}</p>
       ) : (
@@ -129,6 +129,6 @@ export function DuelTranscript({ rounds, extraLines, leakGuard, handleInvoice, e
           ),
         )
       )}
-    </section>
+    </Card>
   )
 }

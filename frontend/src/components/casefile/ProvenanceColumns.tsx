@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { InkRow, type InkRowTone } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { splitHandle } from '@/lib/handle'
 import type { CaseColumns, CaseNode } from '@/lib/caseGraph'
@@ -29,6 +30,7 @@ function NodeButton({
   selected,
   dim,
   onSelect,
+  tone,
   className,
   children,
 }: {
@@ -36,11 +38,14 @@ function NodeButton({
   selected: boolean
   dim: boolean
   onSelect: ProvenanceColumnsProps['onSelect']
+  tone: InkRowTone
   className: string
   children: ReactNode
 }) {
   return (
-    <button
+    <InkRow
+      as="button"
+      tone={tone}
       type="button"
       data-node={node.id}
       data-trust={node.untrusted ? 'untrusted' : 'trusted'}
@@ -48,13 +53,14 @@ function NodeButton({
       onClick={() => onSelect(selected ? null : node)}
       className={cn(
         'w-full cursor-pointer text-left font-[inherit] text-fg transition-opacity',
+        'focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid',
         className,
         dim && 'opacity-35',
         selected && 'ring-2 ring-accent ring-offset-2 ring-offset-card',
       )}
     >
       {children}
-    </button>
+    </InkRow>
   )
 }
 
@@ -77,10 +83,8 @@ export function ProvenanceColumns({
           <NodeButton
             key={n.id}
             {...common(n)}
-            className={cn(
-              'rounded-[8px] p-2.5',
-              n.untrusted ? 'border-[1.5px] border-dashed border-bad bg-bad-bg' : 'border-[1.5px] border-solid border-fg bg-card',
-            )}
+            tone={n.untrusted ? 'untrusted' : 'default'}
+            className="rounded-[8px] p-2.5"
           >
             <div className="font-bold" title={n.span ? `“${n.span.quote}”` : undefined}>
               {n.title}
@@ -96,10 +100,8 @@ export function ProvenanceColumns({
           <NodeButton
             key={n.id}
             {...common(n)}
-            className={cn(
-              'rounded-[8px] bg-card p-2.5 font-mono text-meta',
-              n.untrusted ? 'border-[1.5px] border-dashed border-bad' : 'border-[1.5px] border-solid border-fg',
-            )}
+            tone={n.untrusted ? 'untrusted' : 'default'}
+            className="rounded-[8px] p-2.5 font-mono text-meta"
           >
             {/* Invoice number + field; the full handle is in the tooltip. */}
             <div className={cn('break-all', n.untrusted ? 'text-claim' : 'text-fg')} title={n.title}>
@@ -120,10 +122,8 @@ export function ProvenanceColumns({
             <NodeButton
               key={n.id}
               {...common(n)}
-              className={cn(
-                'rounded-[6px] px-2 py-1.5 font-mono text-meta break-all',
-                failed ? 'border-2 border-bad bg-bad-bg' : 'border border-line bg-card',
-              )}
+              tone={failed ? 'failed' : 'default'}
+              className="px-2 py-1.5 font-mono text-meta break-all"
             >
               <span title={n.message}>
                 {n.title}{' '}
@@ -144,10 +144,8 @@ export function ProvenanceColumns({
             <NodeButton
               key={n.id}
               {...common(n)}
-              className={cn(
-                'rounded-[10px] bg-card p-3.5 text-center',
-                good ? 'border-2 border-good' : bad ? 'border-2 border-bad' : 'border-2 border-fg',
-              )}
+              tone={bad ? 'failed' : 'default'}
+              className="rounded-[10px] p-3.5 text-center"
             >
               <div className={cn('text-[1.429rem] font-extrabold', good ? 'text-good' : bad ? 'text-bad' : 'text-fg')}>
                 {ACTION_WORD[n.status ?? ''] ?? n.status ?? '—'}

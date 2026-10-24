@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isApiError } from '@/api/errors'
 import { RequestError } from '@/components/console/RequestError'
+import { Card, InkButton, InkRow } from '@/components/ui'
+import { chipClass } from '@/components/ui/chipStyle'
 import { usePendingApprovals } from '@/hooks/queries'
 import { maskAccount } from '@/lib/account'
 import { cn } from '@/lib/cn'
@@ -39,7 +41,7 @@ export function QueueDrawer() {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-label={`Countersign queue: ${q.data ? `${pending.length} pending` : q.isError ? 'unavailable' : 'loading'}`}
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border border-line bg-transparent px-2 py-0.5 font-[inherit] text-muted hover:text-fg"
+        className={cn(chipClass({ button: true }), 'py-0.5')}
       >
         queue
         <span
@@ -60,30 +62,25 @@ export function QueueDrawer() {
             aria-modal="true"
             aria-labelledby="queue-title"
             onClick={(e) => e.stopPropagation()}
-            className="absolute inset-y-0 right-0 flex w-[min(30rem,100vw)] flex-col gap-3 overflow-y-auto border-l border-line bg-bg p-5 font-prose"
+            className="absolute inset-y-0 right-0 flex w-[min(30rem,100vw)] flex-col gap-3 overflow-y-auto border-l-2 border-ink bg-[image:var(--page-ground)] bg-bg p-5 font-prose"
           >
             <div className="flex items-baseline gap-3">
-              <h2 id="queue-title" className="m-0 text-lead font-extrabold">
+              <h2 id="queue-title" className="display m-0 text-lead">
                 Countersign queue
               </h2>
               <span className="font-mono text-meta text-muted">pending</span>
-              <button
-                ref={closeRef}
-                type="button"
-                onClick={() => setOpen(false)}
-                className="ml-auto cursor-pointer rounded-[6px] border border-line bg-transparent px-3 py-1 font-mono text-fg"
-              >
+              <InkButton ref={closeRef} variant="secondary" size="sm" onClick={() => setOpen(false)} className="ml-auto font-mono">
                 close
-              </button>
+              </InkButton>
             </div>
 
             {q.isPending ? (
               <p className="m-0 text-small text-muted">reading approvals…</p>
             ) : notBuilt ? (
-              <div data-testid="not-available" className="rounded-[8px] border border-dashed border-line px-3.5 py-3 text-small">
+              <InkRow data-testid="not-available" className="px-3.5 py-3 text-small">
                 <p className="m-0 font-bold">approvals not available yet</p>
                 <p className="m-0 font-mono text-meta text-muted">GET /api/approvals?status=pending → 404 not_found</p>
-              </div>
+              </InkRow>
             ) : q.isError ? (
               <RequestError title="Could not read approvals" error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} />
             ) : pending.length === 0 ? (
@@ -91,7 +88,7 @@ export function QueueDrawer() {
             ) : (
               <ul aria-label="Pending approvals" className="m-0 flex list-none flex-col gap-2.5 p-0">
                 {pending.map((a) => (
-                  <li key={a.approval_id} className="rounded-[10px] border border-line bg-card p-3.5">
+                  <Card as="li" key={a.approval_id} className="p-3.5">
                     <Link
                       to={`/runs/${encodeURIComponent(a.run_id)}/invoices/${encodeURIComponent(a.invoice_id)}`}
                       onClick={() => setOpen(false)}
@@ -106,7 +103,7 @@ export function QueueDrawer() {
                     <p className="m-0 font-mono text-meta text-muted">
                       {a.reason_codes.join(', ')} · needs {ROLE_LABEL[a.required_role]} · {a.created_at}
                     </p>
-                  </li>
+                  </Card>
                 ))}
               </ul>
             )}

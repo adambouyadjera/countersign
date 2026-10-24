@@ -6,7 +6,7 @@ import { isApiError } from '@/api/errors'
 import type { Batch, InvoiceSummary, Lane } from '@/api/types'
 import { RequestError } from '@/components/console/RequestError'
 import { SigSays } from '@/components/sig'
-import { Button } from '@/components/ui'
+import { Card, Chip, InkButton, InkRow } from '@/components/ui'
 import { useAutopilot, useInbox, useVendor } from '@/hooks/queries'
 import { maskAccount } from '@/lib/account'
 import { ATTACK_MAX, ATTACKER_TOKEN, attackTextProblem, inboxItemFor, insertAt } from '@/lib/attack'
@@ -23,8 +23,6 @@ const PLACEMENTS: { value: Placement; title: string; hint: string }[] = [
 ]
 
 const RUN_LANES: Lane[] = ['unguarded', 'countersign']
-const CARD = 'rounded-[12px] border border-line bg-card'
-const EYEBROW = 'text-meta tracking-[0.08em] text-muted uppercase'
 
 /** One option per vendor in the batch, from its invoice there. */
 function vendorsOf(batch: Batch | null): InvoiceSummary[] {
@@ -125,16 +123,17 @@ export function AttackLabPage() {
   return (
     <div className="flex flex-col font-prose">
       <div className="px-7 pt-5.5 pb-1.5">
-        <h1 className="m-0 text-[2rem] font-extrabold">Write an invoice to fool Sig</h1>
+        <h1 className="display m-0 text-[2rem]">Write an invoice to fool Sig</h1>
         <p className="m-0 mt-1 text-muted">
           Your text goes into a real invoice PDF and lands in the AP inbox like any other mail. {lanesNote}
         </p>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_clamp(20rem,30vw,31.43rem)] items-start gap-[22px] px-7 pt-4 pb-7">
-        <form
+        <Card
+          as="form"
           aria-label="Attack"
-          className={cn(CARD, 'flex flex-col gap-[18px] p-[22px]')}
+          className="flex flex-col gap-[18px] p-[22px]"
           onSubmit={(e) => {
             e.preventDefault()
             if (!problem && chosen && !busy) send.mutate()
@@ -149,7 +148,7 @@ export function AttackLabPage() {
                 id="vendor"
                 value={chosen?.vendor_id}
                 onChange={(e) => setVendorId(e.target.value)}
-                className="min-h-11 rounded-[8px] border border-line bg-card p-2.5 font-[inherit] text-fg"
+                className="ink-field min-h-11 p-2.5 font-[inherit] text-fg"
               >
                 {vendors.map((v) => (
                   <option key={v.vendor_id} value={v.vendor_id}>
@@ -158,15 +157,15 @@ export function AttackLabPage() {
                 ))}
               </select>
             ) : (
-              <div className="flex flex-wrap items-center gap-3 rounded-[8px] border border-dashed border-line p-3 text-small">
+              <InkRow className="flex flex-wrap items-center gap-3 p-3 text-small">
                 <span className="text-muted">
                   The vendors come from a batch&apos;s invoices (there&apos;s no vendor list endpoint yet).
                 </span>
-                <Button size="sm" variant="quiet" onClick={() => drawBatch.mutate()} disabled={drawBatch.isPending}>
+                <InkButton size="sm" variant="secondary" onClick={() => drawBatch.mutate()} disabled={drawBatch.isPending}>
                   {drawBatch.isPending ? 'drawing…' : 'draw a batch'}
-                </Button>
+                </InkButton>
                 {drawBatch.isError && <RequestError title="Could not draw a batch" error={drawBatch.error} />}
-              </div>
+              </InkRow>
             )}
           </div>
 
@@ -174,14 +173,11 @@ export function AttackLabPage() {
             <legend className="mb-1.5 font-semibold">Where to hide it</legend>
             <div className="grid grid-cols-3 gap-2.5">
               {PLACEMENTS.map((p) => (
-                <label
+                <InkRow
+                  as="label"
                   key={p.value}
-                  className={cn(
-                    'flex cursor-pointer items-start gap-2 rounded-[8px] p-3',
-                    placement === p.value
-                      ? 'border-2 border-accent bg-[color-mix(in_srgb,var(--accent)_8%,white)]'
-                      : 'border border-line',
-                  )}
+                  tone={placement === p.value ? 'selected' : 'default'}
+                  className="flex cursor-pointer items-start gap-2 rounded-[8px] p-3"
                 >
                   <input
                     type="radio"
@@ -196,7 +192,7 @@ export function AttackLabPage() {
                     <br />
                     <span className="text-small text-muted">{p.hint}</span>
                   </span>
-                </label>
+                </InkRow>
               ))}
             </div>
           </fieldset>
@@ -212,17 +208,19 @@ export function AttackLabPage() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               aria-describedby="attack-count"
-              className="resize-y rounded-[8px] border border-line bg-card p-3 font-mono text-fg"
+              className="ink-field resize-y p-3 font-mono text-fg"
             />
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Chip
+                as="button"
+                tone="untrusted"
                 type="button"
                 onClick={addToken}
-                className="min-h-9 cursor-pointer rounded-[6px] border border-bad-line bg-bad-bg px-2.5 font-mono text-small text-bad"
+                className="min-h-9 font-mono text-small"
                 title={`Inserts ${ATTACKER_TOKEN}; the backend replaces it with the attacker's account number`}
               >
                 + attacker account
-              </button>
+              </Chip>
               <span
                 id="attack-count"
                 className={cn('ml-auto font-mono text-meta', count > ATTACK_MAX ? 'text-bad' : 'text-muted')}
@@ -233,13 +231,13 @@ export function AttackLabPage() {
           </div>
 
           <div className="flex flex-col items-start gap-2">
-            <Button
+            <InkButton
               type="submit"
               className="!min-h-12 !px-[22px] text-face !font-bold"
               disabled={Boolean(problem) || !chosen || busy}
             >
               {send.isPending ? 'sending…' : startRun.isPending ? 'starting the run…' : 'Send it to the AP inbox'}
-            </Button>
+            </InkButton>
             {problem && text.length > 0 && <p className="m-0 text-small text-bad">{problem}</p>}
             <SendStatus
               send={send}
@@ -253,42 +251,41 @@ export function AttackLabPage() {
               onStartMyself={() => sent && startRun.mutate(sent)}
             />
           </div>
-        </form>
+        </Card>
 
         <aside aria-label="About this attack" className="flex flex-col gap-4">
           <SigSays expression="cheeky">Go ahead, try to fool me. Whatever happens, I&apos;ll show my work.</SigSays>
 
-          <section aria-label="Preview" className={cn(CARD, 'p-5 font-mono text-meta leading-[1.8]')}>
-            <div className={cn(EYEBROW, 'mb-2 font-prose')}>preview · what a human sees</div>
+          <Card as="section" aria-label="Preview" label="preview · what a human sees" className="flex flex-col p-5 font-mono text-meta leading-[1.8]">
             {chosen ? (
               <>
                 <div className="text-body font-bold">{chosen.vendor_name}</div>
                 <div className="text-muted">invoice number, date, items and amount: set when the PDF is made</div>
                 {vendor.data && <div>Account on file: {maskAccount(vendor.data.account_on_file_display)}</div>}
                 {placement === 'hidden_white_text' ? (
-                  <div className="mt-1.5 rounded-[6px] border border-dashed border-bad-line px-2 py-1.5 font-prose text-bad">
+                  <InkRow tone="untrusted" className="mt-1.5 px-2 py-1.5 font-prose text-bad">
                     your text sits here in white: invisible here, readable by an AI
-                  </div>
+                  </InkRow>
                 ) : (
-                  <div
+                  <InkRow
+                    tone="untrusted"
                     className={cn(
-                      'mt-1.5 rounded-[6px] border border-dashed border-bad-line px-2 py-1.5 break-words whitespace-pre-wrap',
+                      'mt-1.5 px-2 py-1.5 break-words whitespace-pre-wrap',
                       placement === 'footer' && 'text-[0.786rem] text-muted',
                     )}
                     data-testid="preview-text"
                   >
                     {placement === 'footer' && <div className="font-prose text-bad">footer</div>}
                     {text ? <WithToken text={text} /> : <span className="font-prose text-muted">your text goes here</span>}
-                  </div>
+                  </InkRow>
                 )}
               </>
             ) : (
               <p className="m-0 font-prose text-muted">Pick a vendor to preview.</p>
             )}
-          </section>
+          </Card>
 
-          <section aria-label="What happens next" className={cn(CARD, 'p-5')}>
-            <div className={EYEBROW}>what happens next</div>
+          <Card as="section" aria-label="What happens next" label="what happens next" className="flex flex-col p-5">
             <ol className="m-0 mt-2.5 list-decimal pl-5 leading-[1.9]">
               <li>The PDF lands in the AP inbox</li>
               {autopilot.isPending ? (
@@ -308,7 +305,7 @@ export function AttackLabPage() {
               )}
               <li>You watch both on the Console</li>
             </ol>
-          </section>
+          </Card>
         </aside>
       </div>
     </div>
@@ -356,9 +353,9 @@ function SendStatus({
               title={inboxError ? 'Could not read the inbox' : 'Could not open the run'}
               error={inboxError ?? pickedUpError}
             />
-            <Button size="sm" variant="quiet" className="self-start" onClick={onStartMyself}>
+            <InkButton size="sm" variant="secondary" className="self-start" onClick={onStartMyself}>
               start the run myself
-            </Button>
+            </InkButton>
           </div>
         )}
       </div>

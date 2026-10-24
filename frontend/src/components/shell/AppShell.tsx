@@ -51,7 +51,7 @@ export function AppShell() {
   const onCase = pathname.startsWith('/runs/')
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-line px-7 py-3.5">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b-2 border-ink px-7 py-3.5">
         <Link to="/" aria-label="Countersign home" className="no-underline">
           <SigLogo />
         </Link>

@@ -10,11 +10,18 @@ export interface SigSaysProps {
   className?: string
 }
 
-/** Sig's face, the "sig" label and one short line, in a white card (as in the mockups). */
+/**
+ * Sig's face, the "sig" label and one short line, in the cobalt speech bubble.
+ * The bubble's bottom-left corner is squared off: that's the corner pointing at Sig.
+ */
 export function SigSays({ expression = 'default', children, className }: SigSaysProps) {
   return (
     <div
-      className={cn('flex items-start gap-3 rounded-[12px] border border-line bg-card px-4 py-3.5', className)}
+      data-sig-says
+      className={cn(
+        'flex items-start gap-3 bg-bubble px-4 py-3.5 [border-radius:var(--bubble-radius)] [border:var(--bubble-border)] shadow-[var(--bubble-shadow)]',
+        className,
+      )}
     >
       <SigFace expression={expression} />
       <div className="min-w-0">

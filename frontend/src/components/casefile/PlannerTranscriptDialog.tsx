@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type MouseEvent } from 'react'
 import type { PlannerTranscript } from '@/api/types'
+import { Card, InkButton, InkRow } from '@/components/ui'
 import { usePlannerTranscript } from '@/hooks/queries'
 import { QueryView } from './Unavailable'
 
@@ -16,26 +17,21 @@ export function PlannerTranscriptDialog({ runId, onClose }: { runId: string; onC
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-fg/30 p-8" onClick={onClose}>
-      <div
+      <Card
         role="dialog"
         aria-modal="true"
         aria-labelledby="planner-title"
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-full w-full max-w-[64rem] flex-col gap-3 overflow-hidden rounded-[12px] border border-line bg-bg p-5"
+        onClick={(e: MouseEvent) => e.stopPropagation()}
+        className="flex max-h-full w-full max-w-[64rem] flex-col gap-3 overflow-hidden p-5"
       >
         <div className="flex items-baseline gap-3">
-          <h2 id="planner-title" className="m-0 font-prose text-lead font-extrabold">
+          <h2 id="planner-title" className="display m-0 text-lead">
             What the planner saw
           </h2>
           <span className="font-mono text-meta text-muted">run {runId}</span>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            className="ml-auto cursor-pointer rounded-[6px] border border-line bg-transparent px-3 py-1 font-[inherit] text-fg"
-          >
+          <InkButton ref={closeRef} variant="secondary" size="sm" onClick={onClose} className="ml-auto font-mono">
             close
-          </button>
+          </InkButton>
         </div>
         <div className="min-h-0 overflow-y-auto">
           <QueryView query={q} what="the planner transcript" endpoint={`GET /api/runs/${runId}/planner_transcript`}>
@@ -54,15 +50,15 @@ export function PlannerTranscriptDialog({ runId, onClose }: { runId: string; onC
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <div className="eyebrow">prompt</div>
-                        <pre className="m-0 max-h-[50vh] overflow-auto rounded-[8px] border border-line bg-card p-3 font-mono text-meta whitespace-pre-wrap">
+                        <InkRow as="pre" className="m-0 max-h-[50vh] overflow-auto p-3 font-mono text-meta whitespace-pre-wrap">
                           {c.prompt}
-                        </pre>
+                        </InkRow>
                       </div>
                       <div>
                         <div className="eyebrow">response</div>
-                        <pre className="m-0 max-h-[50vh] overflow-auto rounded-[8px] border border-line bg-card p-3 font-mono text-meta whitespace-pre-wrap">
+                        <InkRow as="pre" className="m-0 max-h-[50vh] overflow-auto p-3 font-mono text-meta whitespace-pre-wrap">
                           {c.response}
-                        </pre>
+                        </InkRow>
                       </div>
                     </div>
                   </section>
@@ -71,7 +67,7 @@ export function PlannerTranscriptDialog({ runId, onClose }: { runId: string; onC
             )}
           </QueryView>
         </div>
-      </div>
+      </Card>
     </div>
   )
 }

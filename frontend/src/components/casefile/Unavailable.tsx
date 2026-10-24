@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { isApiError } from '@/api/errors'
 import { RequestError } from '@/components/console/RequestError'
+import { InkRow } from '@/components/ui'
+import { cn } from '@/lib/cn'
 
 /**
  * Renders a query's data, or says honestly why it can't: loading, "not available
@@ -12,27 +14,31 @@ export function QueryView<T>({
   endpoint,
   what,
   children,
+  className,
 }: {
   query: UseQueryResult<T, Error>
   /** e.g. "GET /api/runs/{id}/invoices/{id}/graph", shown in the empty state. */
   endpoint: string
   what: string
   children: (data: T) => ReactNode
+  /** Applied to the loading, "not available yet" and error states (e.g. to inset them in a flush card). */
+  className?: string
 }) {
-  if (query.isPending) return <p className="m-0 text-small text-muted">reading {what}…</p>
+  if (query.isPending) return <p className={cn('m-0 text-small text-muted', className)}>reading {what}…</p>
   if (query.isError) {
     if (isApiError(query.error) && query.error.status === 404) {
       return (
-        <div data-testid="not-available" className="rounded-[8px] border border-dashed border-line px-3.5 py-3 text-small">
+        <InkRow data-testid="not-available" className={cn('px-3.5 py-3 text-small', className)}>
           <p className="m-0 font-bold text-fg">{what} not available yet</p>
           <p className="m-0 font-mono text-meta text-muted">
             {endpoint} → 404 {query.error.code}
           </p>
-        </div>
+        </InkRow>
       )
     }
     return (
       <RequestError
+        className={className}
         title={`Could not read ${what}`}
         error={query.error}
         onRetry={() => void query.refetch()}
