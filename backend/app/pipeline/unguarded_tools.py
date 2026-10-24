@@ -17,6 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
+from app.adapters.dry_run_bank import DryRunBank
 from app.contract_models import Payment
 
 
@@ -191,6 +192,12 @@ class UnguardedTools:
                     raise ToolInputError("payment_uncertain", "An identical payment attempt requires reconciliation before retrying.")
                 return {**deepcopy(previous), "reused": True}
             if self.dry_run:
+                if isinstance(self.bank, DryRunBank):
+                    self.bank.record_intent(run_id=self.run_id, invoice_id=self.invoice_id,
+                        invoice_number=arguments.invoice_number, vendor_id=self.vendor_id,
+                        amount_cents=arguments.amount_cents, to_display_number=target["display_number"],
+                        to_account_id=target["account_id"], memo=arguments.memo,
+                        lane="unguarded", payee_on_file=self._on_file(target))
                 result = {"status": "dry_run", "submitted": False, **values,
                           "payee_on_file": self._on_file(target)}
                 self._pay_results[digest] = result

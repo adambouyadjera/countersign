@@ -75,19 +75,25 @@ def _payment_inputs_verified(document, extraction, invoice) -> bool:
 class RunManager:
     """Keep background runs alive independently of the initiating HTTP request."""
 
-    def __init__(self, store, bus, adapters, settings, payment_executor=None):
+    def __init__(self, store, bus, adapters, settings, payment_executor=None, *, dry_run=False, as_of=None):
         self.store = store
         self.bus = bus
         self.adapters = adapters
         self.settings = settings
+        if dry_run and adapters.bank.mode != "dry_run":
+            raise ValueError("Evaluation requires a capability-denied dry-run bank")
+        self.dry_run = dry_run
+        self.as_of = as_of
         self.payments = payment_executor or PaymentExecutor(store, bus, adapters.bank)
         self.policy = PolicyEngine(store, amount_tolerance_cents=settings.policy_amount_tolerance_cents,
-                                   autonomy_limit_cents=settings.agent_autonomy_limit_cents)
+                                   autonomy_limit_cents=settings.agent_autonomy_limit_cents, today=as_of)
         self._tasks: dict[str, asyncio.Task] = {}
         self._closed = False
 
     @property
     def mode(self):
+        if self.dry_run:
+            return "offline" if "offline" in {self.adapters.extractor.mode, self.adapters.planner.mode} else "dry_run"
         return "offline" if "offline" in {self.adapters.extractor.mode, self.adapters.planner.mode, self.adapters.bank.mode} else "live"
 
     def start(self, request: RunRequest) -> Run:
@@ -184,7 +190,21 @@ class RunManager:
         statuses = statuses or {lane.lane: "failed" if failed else "completed" for lane in run.lanes}
         run.lanes = [RunLane(lane=lane.lane, status=statuses[lane.lane]) for lane in run.lanes]
         self.store.save_run(run)
-        refreshed = refresh_run_tallies(self.store, run.run_id)
+        refreshed = refresh_run_tallies(self.store, run.run_id) if not self.dry_run else None
+        if self.dry_run:
+            decisions = {row["invoice_id"]: row for row in self.store.list_records("decisions", run_id=run.run_id)}
+            tallies = {}
+            for lane in run.lanes:
+                intents = [item for item in self.adapters.bank.intents
+                           if item["run_id"] == run.run_id and item["lane"] == lane.lane]
+                tallies[lane.lane] = LaneTally(paid_count=len(intents),
+                    paid_cents=sum(item["amount_cents"] for item in intents),
+                    held_count=sum(item["outcome"] == "HOLD" for item in decisions.values()) if lane.lane == "countersign" else 0,
+                    blocked_count=sum(item["outcome"] == "BLOCK" for item in decisions.values()) if lane.lane == "countersign" else 0,
+                    not_on_file_count=sum(not item.get("payee_on_file", True) for item in intents),
+                    not_on_file_cents=sum(item["amount_cents"] for item in intents if not item.get("payee_on_file", True)))
+            run.tallies = RunTallies(**tallies)
+            self.store.save_run(run)
         if refreshed is not None:
             run.tallies = refreshed.tallies
         for lane in run.lanes:
@@ -329,7 +349,7 @@ class RunManager:
                 await self._event(run.run_id, "plan.proposed", public_plan.model_dump(mode="python"))
                 # Programs produce intents. Only the deterministic policy gate
                 # can authorize the payment service to use a trusted destination.
-                interpreter = Interpreter(table, vendors, purchase_orders)
+                interpreter = Interpreter(table, vendors, purchase_orders, today=self.as_of)
                 result = interpreter.execute(plan.steps)
                 for intent in result.intents:
                     invoice = pending[intent.invoice_id]
@@ -545,6 +565,26 @@ class RunManager:
             if intent is None or not vendor:
                 raise ValueError("Authorized intent is missing its trusted vendor")
             trusted_account = str(vendor.get("account_on_file_display", vendor.get("remit_account_number", "")))
+            if self.dry_run:
+                number = invoice_number or invoice.invoice_number
+                if not self.store.claim_session_payment(number, f"dry-run:{run.run_id}:{invoice.invoice_id}"):
+                    decision.outcome, decision.reason_codes = "BLOCK", ["DUPLICATE_INVOICE"]
+                    for check in decision.checks:
+                        if check.code == "NOT_DUPLICATE":
+                            check.passed = False
+                            check.message = "Another evaluation intent already reserved this invoice number."
+                    self.store.save_record("decisions", decision.decision_id, decision)
+                    self._save_graph(run, invoice, decision, intent=intent, steps=steps)
+                    await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
+                    tally.blocked_count += 1
+                    return
+                self.adapters.bank.record_intent(run_id=run.run_id, invoice_id=invoice.invoice_id,
+                    invoice_number=number, vendor_id=vendor_id, amount_cents=amount,
+                    to_display_number=trusted_account, requested_account=str(intent.to_account.value),
+                    memo=str(intent.memo.value), lane="countersign", payee_on_file=True)
+                tally.paid_count += 1
+                tally.paid_cents += amount
+                return
             try:
                 payment = await self.payments.execute(
                     run_id=run.run_id, invoice_id=invoice.invoice_id,

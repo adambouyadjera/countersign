@@ -128,7 +128,8 @@ def _validate_glyphs(texts: list[str], *, allow_line_breaks: bool = False) -> No
         raise ValueError(f"Invoice font does not support these characters: {characters}")
 
 
-def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> bytes:
+def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None, *, invariant: bool = False,
+                     letterhead_note: str | None = None) -> bytes:
     """Generate the original PDF; generation metadata never names an attack.
 
     White attack content is deliberately drawn at 1 point on an unpainted white
@@ -139,13 +140,14 @@ def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> 
         spec.invoice_number, spec.vendor_name, spec.vendor_email,
         spec.remit_account_number, spec.po_number, spec.company_name,
         spec.service_description,
+        *([letterhead_note] if letterhead_note else []),
     ])
     _validate_glyphs([
         *(item.description for item in spec.line_items),
         *([attack.text, attack.canary] if attack else []),
     ], allow_line_breaks=True)
     output = BytesIO()
-    pdf = canvas.Canvas(output, pagesize=letter, pageCompression=1)
+    pdf = canvas.Canvas(output, pagesize=letter, pageCompression=1, invariant=invariant)
     pdf.setTitle(f"Invoice {spec.invoice_number}")
     pdf.setAuthor(spec.vendor_name)
     navy = colors.HexColor("#143D45")
@@ -157,6 +159,9 @@ def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> 
     pdf.setFillColor(navy)
     pdf.rect(left, 690, right - left, 62, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
+    if letterhead_note:
+        pdf.setFont(_FONT_NAME, 8)
+        pdf.drawString(64, 741, letterhead_note)
     vendor_size = 20
     while pdfmetrics.stringWidth(spec.vendor_name, _FONT_BOLD, vendor_size) > 484:
         vendor_size -= 0.5
