@@ -1,0 +1,135 @@
+@import 'tailwindcss';
+
+/* Design tokens: the "notarial ledger" palette from CLAUDE.md. */
+:root {
+  --paper: #f3efe6;
+  --paper-2: #e9e3d6;
+  --ink: #111a2b;
+  --ink-soft: #4a5468;
+  --rule: #c9c0ae;
+  --verified: #2f7d6d;
+  --taint: #d23b2a;
+  --hold: #b7791f;
+
+  /* Derived, not new hues: the palette's rule pulled toward ink so hairlines
+     survive a washed-out projector. --rule stays for secondary divisions. */
+  --rule-strong: color-mix(in srgb, var(--ink) 34%, var(--rule));
+  --margin-rule: color-mix(in srgb, var(--ink) 18%, var(--rule));
+
+  --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+  --font-ui: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* Tailwind theme extensions that resolve to the variables above. */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-verified: var(--verified);
+  --color-taint: var(--taint);
+  --color-hold: var(--hold);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  @media (min-width: 1600px) {
+    html {
+      font-size: 17px;
+    }
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    /* Ledger paper: a double margin rule down the left, over a ruled ground
+       with one hairline every 1.75rem. */
+    background-image:
+      linear-gradient(
+        to right,
+        transparent 0 0.75rem,
+        var(--margin-rule) 0.75rem calc(0.75rem + 1px),
+        transparent calc(0.75rem + 1px) calc(0.75rem + 4px),
+        var(--margin-rule) calc(0.75rem + 4px) calc(0.75rem + 5px),
+        transparent calc(0.75rem + 5px)
+      ),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(1.75rem - 1px),
+        color-mix(in srgb, var(--rule) 40%, transparent) calc(1.75rem - 1px),
+        color-mix(in srgb, var(--rule) 40%, transparent) 1.75rem
+      );
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--hold) 30%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .smallcaps {
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent 0 7px,
+      color-mix(in srgb, var(--rule) 70%, transparent) 7px 8px
+    );
+  }
+  /* Accountant's double rule: heavy ink over a hairline, used under mastheads and totals. */
+  .rule-double {
+    border-bottom: 3px double var(--ink);
+  }
+  .rule-heavy-double {
+    box-shadow:
+      0 2px 0 var(--ink),
+      0 5px 0 var(--paper),
+      0 6px 0 var(--ink);
+  }
+  /* Display serif tuned for large sizes. Instrument Serif ships one weight, so
+     emphasis comes from size and tight tracking, not bold. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.018em;
+    line-height: 0.92;
+    font-feature-settings: 'lnum' 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
