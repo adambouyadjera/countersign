@@ -186,19 +186,7 @@ from app.pipeline.extractor import LiveExtractorLLM, OfflineExtractorLLM
 from app.adapters.planner import LivePlannerLLM, OfflinePlannerLLM
 
 
-class _AgentOperations:
-    async def run(
-        self, *, instruction: str, document: DocumentText
-    ) -> AgentTranscript:
-        raise NotImplementedError("Unguarded agent requests are not implemented.")
-
-
-class LiveAgentLLM(_AgentOperations, _LiveService):
-    pass
-
-
-class OfflineAgentLLM(_AgentOperations, _OfflineService):
-    pass
+from app.adapters.unguarded import LiveAgentLLM, OfflineAgentLLM
 
 
 class _MutatorOperations:

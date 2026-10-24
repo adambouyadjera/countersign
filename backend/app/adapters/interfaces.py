@@ -77,9 +77,11 @@ class PlannerLLM(ServiceAdapter, Protocol):
 
 @runtime_checkable
 class AgentLLM(ServiceAdapter, Protocol):
-    async def run(
-        self, *, instruction: str, document: DocumentText
-    ) -> AgentTranscript: ...
+    model: str
+
+    async def ensure_capabilities(self) -> dict[str, Any]: ...
+
+    async def complete(self, *, messages: list[dict], tools: list[dict], protocol: str = "tools") -> Any: ...
 
 
 @runtime_checkable

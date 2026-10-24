@@ -19,7 +19,7 @@ from app.world.batches import create_standard_batch
 @pytest.fixture
 def application(tmp_path):
     return create_app(Settings(
-        _env_file=None, nessie_mode="offline", extractor_mode="offline", planner_mode="offline", elastic_mode="offline",
+        _env_file=None, nessie_mode="offline", extractor_mode="offline", planner_mode="offline", agent_mode="offline", elastic_mode="offline",
         nessie_api_key="", gemini_api_key="", anthropic_api_key="", elastic_api_key="", bitdeer_api_key="",
     ), db_path=tmp_path / "runs.db")
 
@@ -52,9 +52,9 @@ async def test_standard_run_four_allows_one_account_mismatch_hold(application):
             return original_list(table, *args, **kwargs)
 
         store.get_record, store.list_records = guarded_get, guarded_list
-        initial, final = await request_run(application, batch, lanes=["unguarded", "countersign"])
-        assert {lane.lane: lane.status for lane in initial.lanes} == {"countersign": "running", "unguarded": "not_implemented"}
-        assert {lane.lane: lane.status for lane in final.lanes} == {"countersign": "completed", "unguarded": "not_implemented"}
+        initial, final = await request_run(application, batch, lanes=["countersign"])
+        assert {lane.lane: lane.status for lane in initial.lanes} == {"countersign": "running"}
+        assert {lane.lane: lane.status for lane in final.lanes} == {"countersign": "completed"}
         tally = final.tallies.countersign
         assert (tally.paid_count, tally.held_count, tally.blocked_count) == (4, 1, 0)
         assert tally.paid_cents == 270000
@@ -72,7 +72,6 @@ async def test_standard_run_four_allows_one_account_mismatch_hold(application):
         assert len(held) == 1
         assert held[0].payload.reason_codes == ["BANK_DETAILS_MISMATCH"]
         assert held[0].payload.invoice_id == batch.invoices[2].invoice_id
-        assert any(event.type == "lane.status" and event.lane == "unguarded" and event.payload.status == "not_implemented" for event in events)
         for event in events:
             assert event.mode == "offline"
             TypeAdapter(RunEvent).validate_json(event.model_dump_json())
@@ -127,12 +126,13 @@ async def test_unverified_or_ungrounded_payment_field_never_reaches_bank(applica
 
 
 @pytest.mark.asyncio
-async def test_unguarded_only_request_still_starts_countersign(application):
+async def test_unguarded_only_request_respects_requested_lane(application):
     async with application.router.lifespan_context(application):
         batch = create_standard_batch(application.state.store)
         _, final = await request_run(application, batch, lanes=["unguarded"])
-        assert {lane.lane: lane.status for lane in final.lanes} == {"countersign": "completed", "unguarded": "not_implemented"}
-        assert final.tallies.countersign.paid_count == 4
+        assert {lane.lane: lane.status for lane in final.lanes} == {"unguarded": "completed"}
+        assert final.tallies.countersign is None
+        assert final.tallies.unguarded.paid_count == 5
 
 
 @pytest.mark.asyncio

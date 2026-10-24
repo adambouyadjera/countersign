@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     bitdeer_api_key: SecretStr = SecretStr("")
     bitdeer_base_url: str = "https://api-inference.bitdeer.ai/v1"
     naive_model: str = "Qwen/Qwen3.8-27B"
+    agent_mode: Literal["live", "offline"] = "live"
+    agent_max_steps: int = Field(default=12, ge=1, le=50)
+    unguarded_dry_run: bool = False
+    eval_alt_model: str = ""
     mutator_model: str = "zai-org/GLM-5.3"
     nessie_api_key: SecretStr = SecretStr("")
     nessie_base_url: str = "https://prod-api.nessieisreal.com"

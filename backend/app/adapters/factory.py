@@ -87,19 +87,19 @@ def build_adapters(
             key=settings.anthropic_api_key, model=settings.planner_model, transport=transport,
         ) if settings.planner_mode == "live" else OfflinePlannerLLM()
     )
+    agent: AgentLLM = (
+        LiveAgentLLM(key=settings.bitdeer_api_key, base_url=settings.bitdeer_base_url,
+                     model=settings.naive_model, transport=transport)
+        if settings.agent_mode == "live" else OfflineAgentLLM()
+    )
     if settings.bitdeer_api_key.get_secret_value():
         bitdeer = {
             "key": settings.bitdeer_api_key, "key_name": "BITDEER_API_KEY",
             "url": _endpoint(settings.bitdeer_base_url, "models"),
             "auth": "bearer", "transport": transport,
         }
-        agent: AgentLLM = LiveAgentLLM(**bitdeer)
         mutator: MutatorLLM = LiveMutatorLLM(**bitdeer)
     else:
-        agent = OfflineAgentLLM(
-            detail="BITDEER_API_KEY is not configured; unguarded agent uses an offline stub.",
-            missing_key=True,
-        )
         mutator = OfflineMutatorLLM(
             detail="BITDEER_API_KEY is not configured; mutator uses an offline stub.",
             missing_key=True,

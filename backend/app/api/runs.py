@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from app.contract_models import Batch, ErrorResponse, PlannerTranscript, PolicyDecision, ProvenanceGraph, Run, RunRequest
+from app.contract_models import AgentTranscript, Batch, ErrorResponse, PlannerTranscript, PolicyDecision, ProvenanceGraph, Run, RunRequest
 from app.security.graph import overlay_resolution
 
 
@@ -44,6 +44,22 @@ async def get_planner_transcript(run_id: str, request: Request) -> PlannerTransc
         "run_id": run_id, "calls": [],
         "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
     })
+
+
+@router.get("/runs/{run_id}/invoices/{invoice_id}/agent_transcript", response_model=AgentTranscript,
+            operation_id="get_agent_transcript", responses={404: {"model": ErrorResponse}})
+async def get_agent_transcript(run_id: str, invoice_id: str, request: Request) -> AgentTranscript:
+    store = request.app.state.store
+    run = store.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    batch = store.get_record("batches", run.batch_id)
+    if batch is None or invoice_id not in {item["invoice_id"] for item in batch["invoices"]}:
+        raise HTTPException(404, "Invoice does not belong to this run")
+    record = store.get_record("agent_transcripts", f"{run_id}:{invoice_id}")
+    if record is None:
+        raise HTTPException(404, "Agent transcript is not available")
+    return AgentTranscript.model_validate({key: value for key, value in record.items() if key != "transcript_id"})
 
 
 @router.get("/runs/{run_id}/invoices/{invoice_id}/graph", response_model=ProvenanceGraph,

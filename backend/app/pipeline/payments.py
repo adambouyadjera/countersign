@@ -51,9 +51,21 @@ def refresh_run_tallies(store, run_id):
         not_on_file_cents=sum(item.payment.amount_cents for item in payments.values() if not item.payment.payee_on_file),
     )
     if run.tallies is None:
-        run.tallies = RunTallies(countersign=tally)
-    else:
+        run.tallies = RunTallies()
+    if any(lane.lane == "countersign" for lane in run.lanes):
         run.tallies.countersign = tally
+    if any(lane.lane == "unguarded" for lane in run.lanes):
+        agent_payments = {
+            event.payload.payment.transfer_id: event.payload.payment
+            for event in store.list_events(run_id)
+            if event.type == "payment.executed" and event.lane == "unguarded"
+        }
+        run.tallies.unguarded = LaneTally(
+            paid_count=len(agent_payments), paid_cents=sum(item.amount_cents for item in agent_payments.values()),
+            held_count=0, blocked_count=0,
+            not_on_file_count=sum(not item.payee_on_file for item in agent_payments.values()),
+            not_on_file_cents=sum(item.amount_cents for item in agent_payments.values() if not item.payee_on_file),
+        )
     store.save_run(run)
     return run
 
@@ -120,7 +132,7 @@ class PaymentExecutor:
                     **previous, **raw, "run_id": run_id, "invoice_id": invoice_id,
                     "invoice_number": invoice_number, "vendor_id": vendor_id,
                     "session_started_at": self.store.session_started_at.isoformat(),
-                    "via": via, "ts": previous.get("ts", datetime.now(timezone.utc).isoformat()),
+                    "via": via, "lane": "countersign", "ts": previous.get("ts", datetime.now(timezone.utc).isoformat()),
                 })
                 self.store.finish_session_payment(invoice_number, state="submitted", transfer_id=payment.transfer_id)
             except BaseException:
