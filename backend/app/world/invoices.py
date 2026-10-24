@@ -8,7 +8,6 @@ from io import BytesIO
 from pathlib import Path
 from threading import Lock
 
-import pdfplumber
 import reportlab
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -16,7 +15,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from app.contract_models import DocumentLine, DocumentPage, DocumentText
+from app.contract_models import DocumentText
 from app.world.attacks import InvoiceAttack
 
 
@@ -252,16 +251,7 @@ def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> 
 
 
 def extract_document(pdf_bytes: bytes, document_id: str, invoice_id: str) -> DocumentText:
-    """Build stable one-based page and line numbers from the actual PDF text."""
-    pages: list[DocumentPage] = []
-    with pdfplumber.open(BytesIO(pdf_bytes)) as document:
-        for page_number, page in enumerate(document.pages, start=1):
-            text = page.extract_text(x_tolerance=1, y_tolerance=0.5) or ""
-            pages.append(DocumentPage(
-                page=page_number,
-                lines=[
-                    DocumentLine(line=line_number, text=line)
-                    for line_number, line in enumerate(text.splitlines(), start=1)
-                ],
-            ))
-    return DocumentText(document_id=document_id, invoice_id=invoice_id, pages=pages)
+    """Compatibility entry point for the canonical pipeline PDF reader."""
+    from app.pipeline.document_text import extract_document as read_document
+
+    return read_document(pdf_bytes, document_id, invoice_id)

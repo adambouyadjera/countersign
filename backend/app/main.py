@@ -19,6 +19,7 @@ from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
 from app.store import Store
 from app.world.seed import seed_trusted_world, seed_world
+from app.pipeline.runner import RunManager
 
 
 def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> JSONResponse:
@@ -67,12 +68,14 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         app.state.event_bus = EventBus(store)
         app.state.adapters = build_adapters(configuration, store)
         app.state.health_checker = HealthChecker(app.state.adapters)
+        app.state.run_manager = RunManager(store, app.state.event_bus, app.state.adapters, configuration)
         try:
             seed_trusted_world(store)
             if configuration.nessie_mode == "offline":
                 await seed_world(store, app.state.adapters.bank)
             yield
         finally:
+            await app.state.run_manager.close()
             store.close()
 
     app = FastAPI(title="Countersign API", version="1.0.0", lifespan=lifespan)

@@ -57,7 +57,7 @@ def build_adapters(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> AdapterBundle:
-    """Build adapters; LLMs use missing-key offline stubs as explicitly requested."""
+    """Build service boundaries without changing configured modes after failure."""
     bank: BankAdapter = (
         OfflineBankAdapter(store=store)
         if settings.nessie_mode == "offline" else
@@ -76,13 +76,10 @@ def build_adapters(
     )
     extractor: ExtractorLLM = (
         LiveExtractorLLM(
-            key=settings.gemini_api_key, key_name="GEMINI_API_KEY",
-            url="https://generativelanguage.googleapis.com/v1beta/models",
-            auth="gemini", transport=transport,
-        ) if settings.gemini_api_key.get_secret_value() else
+            key=settings.gemini_api_key, model=settings.extractor_model, transport=transport,
+        ) if settings.extractor_mode == "live" else
         OfflineExtractorLLM(
-            detail="GEMINI_API_KEY is not configured; extractor uses an offline stub.",
-            missing_key=True,
+            detail="EXTRACTOR_MODE=offline; deterministic invoice-layout parser.",
         )
     )
     planner: PlannerLLM = (

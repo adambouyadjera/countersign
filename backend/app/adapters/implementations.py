@@ -19,7 +19,6 @@ from app.contract_models import (
     AuditAnswer,
     AuditAskRequest,
     DocumentText,
-    FieldsExtractedPayload,
     Handle,
     Placement,
     PlanProposedPayload,
@@ -184,17 +183,7 @@ class OfflineAuditSink(_OfflineService):
         raise NotImplementedError("Audit questions require the live Elastic adapter.")
 
 
-class _ExtractorOperations:
-    async def extract(self, document: DocumentText) -> FieldsExtractedPayload:
-        raise NotImplementedError("Document extraction is not implemented.")
-
-
-class LiveExtractorLLM(_ExtractorOperations, _LiveService):
-    pass
-
-
-class OfflineExtractorLLM(_ExtractorOperations, _OfflineService):
-    pass
+from app.pipeline.extractor import LiveExtractorLLM, OfflineExtractorLLM
 
 
 class _PlannerOperations:

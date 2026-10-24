@@ -149,11 +149,12 @@ class LiveBankAdapter(_BankOperations):
         if not self._base_url:
             raise BankError("Nessie base URL is not configured.")
         try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=20, follow_redirects=False) as client:
-                response = await client.request(method, self._base_url + path,
-                    params={"key": self._key.get_secret_value()}, json=payload)
-        except httpx.TimeoutException:
-            raise BankError("Nessie request timed out.") from None
+            async with asyncio.timeout(15):
+                async with httpx.AsyncClient(transport=self._transport, timeout=15, follow_redirects=False) as client:
+                    response = await client.request(method, self._base_url + path,
+                        params={"key": self._key.get_secret_value()}, json=payload)
+        except (httpx.TimeoutException, TimeoutError):
+            raise BankError("request timed out after 15 s (nessie)") from None
         except Exception:
             raise BankError("Nessie request failed.") from None
         if not response.is_success:

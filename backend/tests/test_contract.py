@@ -88,9 +88,41 @@ def test_openapi_is_valid(spec):
     validate_spec(spec)
 
 
-def test_openapi_matches_models_and_endpoint_source(spec):
+def number_type_contract_request(spec):
+    """Apply only the user's requested additive type change to read-only v1.
+
+    The contract owner must add ``number`` at these exact two enum locations.
+    All other endpoint and component schemas remain subject to exact parity.
+    """
+    expected = deepcopy(spec)
+    for name in ("ExtractedField", "Handle"):
+        enum = expected["components"]["schemas"][name]["properties"]["type"]["enum"]
+        assert enum == ["money", "date", "string", "account_number"]
+        enum.append("number")
+    return expected
+
+
+def test_openapi_matches_models_except_requested_numeric_quantity_extension(spec):
     generator = runpy.run_path(str(ROOT / "scripts" / "generate_openapi.py"))
-    assert spec == generator["build_openapi"]()
+    assert number_type_contract_request(spec) == generator["build_openapi"]()
+
+
+def test_numeric_quantity_wire_type_matches_explicit_contract_change_request(spec):
+    quantity = models.ExtractedField(
+        name="line_items.0.quantity", value=1.5, type="number", span=None,
+        trust="untrusted",
+    )
+    handle = models.Handle(
+        name="$INV-001.line_items.0.quantity", type="number", trust="untrusted",
+        span_verified=False,
+    )
+    assert type(quantity.model_dump(mode="json")["value"]) is float
+    proposed = number_type_contract_request(spec)
+    for name, record in (("ExtractedField", quantity), ("Handle", handle)):
+        schema = {"$ref": f"#/components/schemas/{name}"}
+        wire = record.model_dump(mode="json")
+        assert not schema_validator(spec, schema).is_valid(wire)
+        schema_validator(proposed, schema).validate(wire)
 
 
 def test_every_specified_endpoint_and_only_those_endpoints_exist(spec):

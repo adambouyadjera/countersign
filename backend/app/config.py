@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     planner_model: str = "claude-sonnet-5-5"
     gemini_api_key: SecretStr = SecretStr("")
-    extractor_model: str = "gemini-2.5-flash"
+    extractor_model: str = "gemini-3.5-flash-lite"
+    extractor_mode: Literal["live", "offline"] = "live"
     bitdeer_api_key: SecretStr = SecretStr("")
     bitdeer_base_url: str = "https://api-inference.bitdeer.ai/v1"
     naive_model: str = "Qwen/Qwen3.8-27B"

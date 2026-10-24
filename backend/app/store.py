@@ -26,6 +26,7 @@ _RECORD_TABLES = {
     "bank_payment_attempts": "attempt_id",
     "invoice_scoring": "invoice_id",
     "documents": "document_id",
+    "extractions": "extraction_id",
     "batches": "batch_id",
     "runs": "run_id",
     "decisions": "decision_id",

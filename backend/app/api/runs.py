@@ -4,10 +4,33 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from app.contract_models import ErrorResponse
+from app.contract_models import ErrorResponse, PolicyDecision, Run, RunRequest
 
 
 router = APIRouter()
+
+
+@router.post("/runs", response_model=Run, operation_id="create_run",
+             responses={404: {"model": ErrorResponse}})
+async def create_run(body: RunRequest, request: Request) -> Run:
+    return request.app.state.run_manager.start(body)
+
+
+@router.get("/runs/{run_id}", response_model=Run, operation_id="get_run",
+            responses={404: {"model": ErrorResponse}})
+async def get_run(run_id: str, request: Request) -> Run:
+    run = request.app.state.store.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    return run
+
+
+@router.get("/runs/{run_id}/decisions", response_model=list[PolicyDecision], operation_id="get_run_decisions",
+            responses={404: {"model": ErrorResponse}})
+async def get_run_decisions(run_id: str, request: Request) -> list[PolicyDecision]:
+    if request.app.state.store.get_run(run_id) is None:
+        raise HTTPException(404, "Run not found")
+    return [PolicyDecision.model_validate(record) for record in request.app.state.store.list_records("decisions", run_id=run_id)]
 
 
 @router.get(
