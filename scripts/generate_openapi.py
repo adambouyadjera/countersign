@@ -153,7 +153,7 @@ def build_openapi() -> dict[str, Any]:
         "/api/batches": {
             "post": operation(
                 "create_batch", "Create a standard invoice batch", "Batch", body="BatchRequest",
-                description="Create five invoices with one poisoned document. The poisoned invoice is not identified in the response. The additive bank_change kind creates five clean invoices and one untrusted vendor bank-change letter as a supporting document.",
+                description="Create five invoices with one poisoned document. The poisoned invoice is not identified in the response. Standard and attack batches never reveal which invoice is poisoned. The additive bank_change kind creates five clean invoices and one untrusted vendor bank-change letter as a supporting document.",
             ),
         },
         "/api/batches/{batch_id}": {
@@ -178,7 +178,7 @@ def build_openapi() -> dict[str, Any]:
             "post": operation(
                 "create_attack", "Create an attack batch and inbox item", "Batch", body="AttackRequest",
                 errors=(404, 429),
-                description="Create an attack batch and an inbox item. Substitute the {{ATTACKER_ACCOUNT}} token in attack_text. The attack text must contain 1 to 600 characters. Rate limit: 10 requests per minute.",
+                description="Create an attack batch and an inbox item. Substitute the {{ATTACKER_ACCOUNT}} token in attack_text. The attack text must contain 1 to 600 characters. Rate limit: 10 requests per minute. The poisoned invoice is not identified in the response. Standard and attack batches never reveal which invoice is poisoned.",
             ),
         },
         "/api/runs": {
@@ -333,7 +333,7 @@ def build_openapi() -> dict[str, Any]:
             "get": operation(
                 "get_bank_change_evidence", "Get a recorded bank-change run", "BankChangeReplay",
                 parameters=[run_id], errors=(404,),
-                description="Read saved evidence files only; no live services or database queries. The literal run_id default aliases run-1b936c2ea67f4236b644609ac7c72089. Return recorded=true, the original final event timestamp as recorded_at, the docs-relative source_file, normalized screen data, and the original saved evidence. Preserve event sequence numbers and timestamps; missing data from incomplete recordings remains explicit.",
+                description="Read saved evidence files only; no live services or database queries. The literal run_id default aliases run-1b936c2ea67f4236b644609ac7c72089. Return recorded=true, the original final event timestamp as recorded_at, the docs-relative source_file, normalized screen data, and the original saved evidence. Preserve event sequence numbers and timestamps; missing data from incomplete recordings remains explicit. Only the bank-change evidence replay names the letter as the demonstrated attack, because it is a recording of a finished run. Standard and attack batches never reveal which invoice is poisoned.",
             ),
         },
     }
@@ -361,7 +361,7 @@ def build_openapi() -> dict[str, Any]:
         "info": {
             "title": "Countersign API",
             "version": "1.2.0",
-            "description": "Countersign provenance firewall API for Fogline Festival, including the Hyphenate track additions. JSON uses snake_case. Timestamps are ISO 8601 UTC. Monetary amounts are integer cents; currency fields use USD. External service IDs in fixtures start with example-. The bank_change_replay fixture is explicitly recorded real evidence and retains original external service IDs.",
+            "description": "Countersign provenance firewall API for Fogline Festival, including the Hyphenate track additions. JSON uses snake_case. Timestamps are ISO 8601 UTC. Monetary amounts are integer cents; currency fields use USD. External service IDs in fixtures start with example-. Fixtures generated from recorded live evidence (bank_change_replay.json) keep their real run and transfer IDs as an explicit exception.",
         },
         "paths": paths,
         "components": {

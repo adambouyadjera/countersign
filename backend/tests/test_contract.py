@@ -120,6 +120,26 @@ def test_contract_v12_publishes_optional_extensions(spec):
     assert schemas["Batch"]["properties"]["kind"]["enum"] == ["standard", "attack", "bank_change"]
 
 
+def test_contract_preserves_poison_nondisclosure_and_recorded_replay_exception(spec):
+    contract = (ROOT / "contracts" / "CONTRACT.md").read_text()
+    assert "Five invoices, one poisoned (which one is never exposed)" in contract
+    assert "Standard and attack batches never reveal which invoice is poisoned." in contract
+    for path in ("/api/batches", "/api/attacks"):
+        assert "is not identified in the response" in spec["paths"][path]["post"]["description"]
+    replay_description = spec["paths"]["/api/evidence/bank-change/{run_id}"]["get"]["description"]
+    for text in (contract, replay_description):
+        assert "Only the bank-change evidence replay names the letter" in text
+        assert "finished run" in text
+
+
+def test_contract_preserves_synthetic_fixture_ids_with_explicit_recording_exception(spec):
+    contract = (ROOT / "contracts" / "CONTRACT.md").read_text()
+    for text in (contract, spec["info"]["description"]):
+        assert "IDs in fixtures start with example-." in text
+        assert "bank_change_replay.json" in text
+        assert "real run and transfer IDs" in text
+
+
 def test_numeric_quantity_wire_type_is_published(spec):
     quantity = models.ExtractedField(
         name="line_items.0.quantity", value=1.5, type="number", span=None,
