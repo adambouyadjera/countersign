@@ -527,6 +527,9 @@ class RunManager:
         self.store.save_record("graphs", key, {"graph_id": key, **graph.model_dump(mode="json")})
 
     async def _apply_decision(self, run, invoice, tally, decision, *, intent=None, steps=(), invoice_number=None):
+        from app.security.duplicate_identity import verified_invoice_references
+
+        references = verified_invoice_references(self.store, run.run_id, invoice.invoice_id)
         vendor_id = intent.vendor.value.vendor_id if intent and intent.vendor.value is not None else invoice.vendor_id
         vendor = self.store.get_record("vendors", vendor_id) or {}
         amount = intent.amount.value if intent and type(intent.amount.value) is int else invoice.amount_cents
@@ -549,6 +552,7 @@ class RunManager:
                 "vendor_id": vendor_id, "invoice_number": approval.invoice_number,
                 "session_started_at": self.store.session_started_at.isoformat(), "decision_id": decision.decision_id,
                 "mode": self.mode,
+                **references,
             })
         self.store.save_record("decisions", decision.decision_id, decision)
         self._save_graph(run, invoice, decision, intent=intent, steps=steps)
@@ -567,12 +571,14 @@ class RunManager:
             trusted_account = str(vendor.get("account_on_file_display", vendor.get("remit_account_number", "")))
             if self.dry_run:
                 number = invoice_number or invoice.invoice_number
-                if not self.store.claim_session_payment(number, f"dry-run:{run.run_id}:{invoice.invoice_id}"):
+                if not self.store.claim_session_payment(number, f"dry-run:{run.run_id}:{invoice.invoice_id}",
+                        vendor_id=vendor_id, amount_cents=amount, run_id=run.run_id,
+                        invoice_id=invoice.invoice_id, **references):
                     decision.outcome, decision.reason_codes = "BLOCK", ["DUPLICATE_INVOICE"]
                     for check in decision.checks:
                         if check.code == "NOT_DUPLICATE":
                             check.passed = False
-                            check.message = "Another evaluation intent already reserved this invoice number."
+                            check.message = "A paid or pending payment already matches this invoice number or semantic identity."
                     self.store.save_record("decisions", decision.decision_id, decision)
                     self._save_graph(run, invoice, decision, intent=intent, steps=steps)
                     await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
@@ -581,7 +587,7 @@ class RunManager:
                 self.adapters.bank.record_intent(run_id=run.run_id, invoice_id=invoice.invoice_id,
                     invoice_number=number, vendor_id=vendor_id, amount_cents=amount,
                     to_display_number=trusted_account, requested_account=str(intent.to_account.value),
-                    memo=str(intent.memo.value), lane="countersign", payee_on_file=True)
+                    memo=str(intent.memo.value), lane="countersign", payee_on_file=True, **references)
                 tally.paid_count += 1
                 tally.paid_cents += amount
                 return
@@ -599,7 +605,7 @@ class RunManager:
                 for check in decision.checks:
                     if check.code == "NOT_DUPLICATE":
                         check.passed = False
-                        check.message = "Another payment already reserved this invoice in this session."
+                        check.message = "A paid or pending payment already matches this invoice number or semantic identity."
                 self.store.save_record("decisions", decision.decision_id, decision)
                 self._save_graph(run, invoice, decision, intent=intent, steps=steps)
                 await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})

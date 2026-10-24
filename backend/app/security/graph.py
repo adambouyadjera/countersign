@@ -278,7 +278,7 @@ def build_graph(
         "SPAN_VERIFIED": {"amount_due_cents", "remit_account_number"},
         "PAYEE_ON_FILE": {"remit_account_number"},
         "AMOUNT_MATCHES_PO": {"amount_due_cents", "po_number", "currency"},
-        "NOT_DUPLICATE": {"invoice_number"},
+        "NOT_DUPLICATE": {"invoice_number", "vendor_name", "amount_due_cents", "invoice_date", "po_number"},
     }
     action_id = action_node_id(invoice_id)
     for check in decision.checks:

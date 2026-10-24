@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from app.adapters.bank import BankError
 from app.contract_models import Approval, ApprovalDecision, ApprovalResolution, Person
 from app.pipeline.payments import DuplicatePaymentError, account_number, refresh_run_tallies
+from app.security.duplicate_identity import verified_invoice_references
 
 
 class ApprovalManager:
@@ -198,8 +199,10 @@ class ApprovalManager:
                 # resolution attempt. Uncertain bank results do consume it.
                 self.payments.prepare(vendor_id=vendor_id, amount_cents=approval.amount_cents,
                                       to_display_number=destination, require_on_file=on_file)
-                if self.store.has_session_payment(context["invoice_number"]):
-                    raise HTTPException(409, "Invoice already paid or reserved in this session")
+                if self.store.has_session_payment(context["invoice_number"], vendor_id=vendor_id,
+                        amount_cents=approval.amount_cents,
+                        **verified_invoice_references(self.store, approval.run_id, approval.invoice_id)):
+                    raise HTTPException(409, "Invoice number or vendor/amount/date-or-PO is already paid or pending")
             if not self.store.claim_approval_resolution(approval_id, body.decision, body.actor_id):
                 raise HTTPException(409, "Approval is already being resolved")
             payment = None
@@ -207,7 +210,7 @@ class ApprovalManager:
                 if payment_args is not None:
                     payment = await self.payments.execute(**payment_args)
             except DuplicatePaymentError:
-                raise HTTPException(409, "Invoice already paid or reserved in this session") from None
+                raise HTTPException(409, "Invoice number or vendor/amount/date-or-PO is already paid or pending") from None
             except HTTPException:
                 # Execution revalidation denies before the invoice reservation,
                 # ledger posting and bank call. Preserve its explicit 403/409;

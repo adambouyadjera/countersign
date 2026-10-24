@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.adapters.bank import BankError
 from app.contract_models import LaneTally, Payment, RunTallies
+from app.security.duplicate_identity import verified_invoice_references
 
 
 _FAILED = {"failed", "rejected", "cancelled", "canceled", "error"}
@@ -20,7 +21,7 @@ def account_number(value: str) -> str:
 
 
 class DuplicatePaymentError(RuntimeError):
-    """The current session already owns a reservation for this invoice number."""
+    """A paid or pending payment already owns this invoice identity."""
 
 
 def refresh_run_tallies(store, run_id):
@@ -110,6 +111,7 @@ class PaymentExecutor:
                                           require_on_file=require_on_file)
             await self.bus.before_payment()
             attempt = f"Countersign {via} {run_id} {invoice_id}"
+            references = {}
 
             def authorize():
                 # This runs inside the bill/event SQLite transaction, after all
@@ -125,8 +127,11 @@ class PaymentExecutor:
                     to_display_number=to_display_number, require_on_file=require_on_file)
                 if current_source["account_id"] != source["account_id"] or current_target["account_id"] != target["account_id"]:
                     raise BankError("Payment directory changed before submission; review is required.")
-                if not self.store.claim_session_payment(invoice_number, attempt):
-                    raise DuplicatePaymentError("Invoice already paid or reserved in this session")
+                references.update(verified_invoice_references(self.store, run_id, invoice_id))
+                if not self.store.claim_session_payment(invoice_number, attempt,
+                        vendor_id=vendor_id, amount_cents=amount_cents, run_id=run_id,
+                        invoice_id=invoice_id, **references):
+                    raise DuplicatePaymentError("Invoice number or vendor/amount/date-or-PO is already paid or pending")
 
             await self.bus.accept_bill(run_id=run_id, invoice_id=invoice_id,
                 invoice_number=invoice_number, vendor_id=vendor_id,
@@ -154,6 +159,7 @@ class PaymentExecutor:
                     "invoice_number": invoice_number, "vendor_id": vendor_id,
                     "session_started_at": self.store.session_started_at.isoformat(),
                     "created_by": created_by, "approval_id": approval_id,
+                    **references,
                     "via": via, "lane": "countersign", "ts": previous.get("ts", datetime.now(timezone.utc).isoformat()),
                 })
                 self.store.finish_session_payment(invoice_number, state="submitted", transfer_id=payment.transfer_id)

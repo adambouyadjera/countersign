@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import math
@@ -275,7 +275,96 @@ class Store:
         identity = json.dumps([self.session_started_at.isoformat(), invoice_number.strip().casefold()])
         return "invoice-payment-" + hashlib.sha256(identity.encode()).hexdigest()
 
-    def has_session_payment(self, invoice_number: str) -> bool:
+    @staticmethod
+    def _payment_metadata(*, vendor_id=None, amount_cents=None, invoice_date=None,
+                          po_number=None) -> dict[str, Any]:
+        """Normalize only real identity facts; missing values never match."""
+        result = {}
+        if isinstance(vendor_id, str) and vendor_id.strip():
+            result["vendor_id"] = vendor_id.strip()
+        if type(amount_cents) is int and amount_cents > 0:
+            result["amount_cents"] = amount_cents
+        if isinstance(invoice_date, date) and not isinstance(invoice_date, datetime):
+            result["invoice_date"] = invoice_date.isoformat()
+        elif isinstance(invoice_date, str):
+            try:
+                result["invoice_date"] = date.fromisoformat(invoice_date).isoformat()
+            except ValueError:
+                pass
+        if isinstance(po_number, str) and po_number.strip():
+            result["po_number"] = " ".join(po_number.split()).casefold()
+        return result
+
+    @classmethod
+    def _same_payment(cls, candidate: Mapping[str, Any], identity: Mapping[str, Any]) -> bool:
+        """A new number cannot evade vendor/amount plus date-or-PO matching."""
+        prior = cls._payment_metadata(**{name: candidate.get(name) for name in (
+            "vendor_id", "amount_cents", "invoice_date", "po_number")})
+        if (not identity.get("vendor_id") or not identity.get("amount_cents")
+                or prior.get("vendor_id") != identity["vendor_id"]
+                or prior.get("amount_cents") != identity["amount_cents"]):
+            return False
+        return any(identity.get(name) is not None and identity[name] == prior.get(name)
+                   for name in ("invoice_date", "po_number"))
+
+    @staticmethod
+    def _payment_unresolved_or_paid(record: Mapping[str, Any]) -> bool:
+        # Unknown or uncertain status remains reserved until reconciliation.
+        failed = {"failed", "rejected", "cancelled", "canceled", "error"}
+        return not any(isinstance(record.get(name), str) and record[name].casefold() in failed
+                       for name in ("state", "status", "transfer_status"))
+
+    def _historical_payment_identity(self, record: Mapping[str, Any]) -> dict[str, Any]:
+        """Enrich legacy payment bindings from deterministically verified sources."""
+        identity = self._payment_metadata(**{name: record.get(name) for name in (
+            "vendor_id", "amount_cents", "invoice_date", "po_number")})
+        run_id, invoice_id = record.get("run_id"), record.get("invoice_id")
+        if not isinstance(run_id, str) or not isinstance(invoice_id, str):
+            return identity
+        if not identity.get("vendor_id"):
+            run = self.get_record("runs", run_id) or {}
+            batch = self.get_record("batches", run["batch_id"]) if run.get("batch_id") else None
+            invoices = [item for item in (batch or {}).get("invoices", [])
+                        if item.get("invoice_id") == invoice_id]
+            if len(invoices) == 1:
+                identity.update(self._payment_metadata(vendor_id=invoices[0].get("vendor_id")))
+        if not identity.get("invoice_date") or not identity.get("po_number"):
+            # Lazy import keeps the persistence layer independent of adapters
+            # and avoids treating an arbitrary document date as a paid fact.
+            from app.security.duplicate_identity import verified_invoice_references
+            references = verified_invoice_references(self, run_id, invoice_id)
+            for name in ("invoice_date", "po_number"):
+                if name not in identity and name in references:
+                    identity.update(self._payment_metadata(**{name: references[name]}))
+        return identity
+
+    def has_session_payment(self, invoice_number: str, *, vendor_id=None,
+                            amount_cents=None, invoice_date=None, po_number=None) -> bool:
+        """Keep exact session protection and include semantic paid/pending history.
+
+        Semantic identity survives session resets. Unguarded-lane transfers are
+        a separate experiment and never contaminate Countersign's paid history.
+        Old records without a date or PO still retain exact-number protection.
+        """
+        if self._has_exact_session_payment(invoice_number):
+            return True
+        identity = self._payment_metadata(vendor_id=vendor_id, amount_cents=amount_cents,
+                                          invoice_date=invoice_date, po_number=po_number)
+        if not identity.get("vendor_id") or not identity.get("amount_cents"):
+            return False
+        for record in self.list_records("session_payment_claims"):
+            if (self._payment_unresolved_or_paid(record)
+                    and self._same_payment(self._historical_payment_identity(record), identity)):
+                return True
+        for transfer in self.list_records("transfers"):
+            if transfer.get("lane") == "unguarded" or transfer.get("via") == "agent":
+                continue
+            if (self._payment_unresolved_or_paid(transfer)
+                    and self._same_payment(self._historical_payment_identity(transfer), identity)):
+                return True
+        return False
+
+    def _has_exact_session_payment(self, invoice_number: str) -> bool:
         """Include reservations and invoice-bound transfers from before B6.
 
         Legacy runs did not create payment claims or always persist the invoice
@@ -326,14 +415,24 @@ class Store:
                 return True
         return False
 
-    def claim_session_payment(self, invoice_number: str, attempt_id: str) -> bool:
-        """Reserve an invoice exactly once across processes before a bank call."""
+    def claim_session_payment(self, invoice_number: str, attempt_id: str, *, vendor_id=None,
+                              amount_cents=None, invoice_date=None, po_number=None,
+                              run_id=None, invoice_id=None) -> bool:
+        """Atomically reserve exact and semantic identities before a bank call."""
         key = self._session_payment_key(invoice_number)
+        metadata = self._payment_metadata(vendor_id=vendor_id, amount_cents=amount_cents,
+                                           invoice_date=invoice_date, po_number=po_number)
         record = {"claim_id": key, "invoice_number": invoice_number,
                   "session_started_at": self.session_started_at.isoformat(),
-                  "attempt_id": attempt_id, "state": "reserved"}
-        with self._lock:
-            if self.has_session_payment(invoice_number):
+                  "attempt_id": attempt_id, "state": "reserved", **metadata}
+        if isinstance(run_id, str) and run_id:
+            record["run_id"] = run_id
+        if isinstance(invoice_id, str) and invoice_id:
+            record["invoice_id"] = invoice_id
+        # Different invoice numbers have different primary keys. A write
+        # transaction serializes the semantic read and insert across processes.
+        with self.transaction():
+            if self.has_session_payment(invoice_number, **metadata):
                 return False
             cursor = self._db().execute(
                 "INSERT OR IGNORE INTO session_payment_claims (claim_id, data) VALUES (?, ?)",
