@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -22,6 +23,9 @@ _EVENT_ADAPTER = TypeAdapter(RunEvent)
 _RECORD_TABLES = {
     "companies": "company_id",
     "vendors": "vendor_id",
+    "vendor_history": "vendor_id",
+    "vendor_bank_changes": "change_id",
+    "reconciliation_sessions": "session_id",
     "purchase_orders": "purchase_order_id",
     "bank_directory": "display_number",
     "bank_seeds": "seed_id",
@@ -122,6 +126,24 @@ class Store:
         if self._connection is None:
             raise RuntimeError("Store.initialize() must be called before using storage")
         return self._connection
+
+    @contextmanager
+    def transaction(self):
+        """Compose journal, history and event writes in one durable transaction."""
+        with self._lock:
+            connection = self._db()
+            nested = connection.in_transaction
+            connection.execute("SAVEPOINT store_transaction" if nested else "BEGIN IMMEDIATE")
+            try:
+                yield connection
+                connection.execute("RELEASE SAVEPOINT store_transaction") if nested else connection.commit()
+            except BaseException:
+                if nested:
+                    connection.execute("ROLLBACK TO SAVEPOINT store_transaction")
+                    connection.execute("RELEASE SAVEPOINT store_transaction")
+                else:
+                    connection.rollback()
+                raise
 
     @property
     def session_started_at(self) -> datetime:
@@ -365,20 +387,13 @@ class Store:
         consuming a sequence number, including across separate Store instances.
         """
         data = _event_data(event)
-        with self._lock:
-            connection = self._db()
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                seq = connection.execute(
-                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE run_id = ?", (run_id,)
-                ).fetchone()[0]
-                data.update(run_id=run_id, seq=seq, ts=datetime.now(timezone.utc))
-                validated = _EVENT_ADAPTER.validate_python(data)
-                self._insert_event(connection, validated)
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        with self.transaction() as connection:
+            seq = connection.execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE run_id = ?", (run_id,)
+            ).fetchone()[0]
+            data.update(run_id=run_id, seq=seq, ts=datetime.now(timezone.utc))
+            validated = _EVENT_ADAPTER.validate_python(data)
+            self._insert_event(connection, validated)
             return validated
 
     @staticmethod

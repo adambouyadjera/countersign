@@ -42,6 +42,16 @@ class BankTransfer(BaseModel):
     mode: Literal["live", "offline"]
 
 
+class BankActivity(BaseModel):
+    """An independently read company-account register item, including pending."""
+    transfer_id: str
+    amount_cents: StrictInt
+    cash_change_cents: StrictInt | None
+    status: str
+    kind: str
+    mode: Literal["live", "offline"]
+
+
 def _cents(value: Any) -> int:
     try:
         amount = Decimal(str(value)) * 100
@@ -158,14 +168,16 @@ class LiveBankAdapter(_BankOperations):
         except Exception:
             raise BankError("Nessie request failed.") from None
         if not response.is_success:
+            collection = path.rsplit("/", 1)[-1]
             if (response.status_code == 404 and method == "GET"
                     and empty_collection_account_id is not None
-                    and path == f"/accounts/{empty_collection_account_id}/transfers"):
+                    and collection in {"transfers", "withdrawals", "deposits"}
+                    and path == f"/accounts/{empty_collection_account_id}/{collection}"):
                 try:
                     empty_message = response.json()
                 except ValueError:
                     empty_message = None
-                if empty_message == "No transfers found for this account":
+                if empty_message == f"No {collection} found for this account":
                     # Observed Nessie empty-collection response. Check account
                     # existence so an unknown account cannot masquerade as empty.
                     await self.get_balance(empty_collection_account_id)
@@ -280,6 +292,54 @@ class LiveBankAdapter(_BankOperations):
             self._save_transfer(record)
         return records
 
+    async def account_activity(self, account_id):
+        """Read all three remote collections, including untracked bank-only items.
+
+        Paired payments use their real withdrawal ID as the transfer ID. A
+        vendor's deposit is not another company-account cash movement.
+        """
+        resources = ("transfers", "withdrawals", "deposits")
+        responses = await asyncio.gather(*(self._request("GET", f"/accounts/{account_id}/{name}",
+            empty_collection_account_id=account_id) for name in resources))
+        activity = {}
+        for collection, body in zip(resources, responses):
+            for raw in self._objects(body):
+                identifier = raw.get("_id", raw.get("id"))
+                if not isinstance(identifier, str) or not identifier or not isinstance(raw.get("status"), str):
+                    raise BankError("Nessie account activity lacks a real ID or status.")
+                amount = _cents(raw.get("amount"))
+                if amount <= 0:
+                    raise BankError("Nessie account activity has a nonpositive amount.")
+                if collection == "withdrawals":
+                    if raw.get("payer_id", account_id) != account_id:
+                        raise BankError("Nessie returned a withdrawal for a different company account.")
+                    change = -amount
+                elif collection == "deposits":
+                    if raw.get("payee_id", account_id) != account_id:
+                        raise BankError("Nessie returned a deposit for a different company account.")
+                    change = amount
+                elif raw.get("payer_id", raw.get("from_account_id")) == account_id == raw.get("payee_id", raw.get("to_account_id")):
+                    change = 0
+                elif raw.get("payer_id", raw.get("from_account_id")) == account_id:
+                    change = -amount
+                elif raw.get("payee_id", raw.get("to_account_id")) == account_id:
+                    change = amount
+                else:
+                    # Old account-local diagnostics lack routing participants.
+                    # A baseline can remember their IDs; new unknown movements
+                    # cannot be given an invented debit/credit direction.
+                    change = None
+                item = BankActivity(transfer_id=identifier, amount_cents=amount,
+                    cash_change_cents=change, status=raw["status"], kind=collection, mode=self.mode)
+                previous = activity.get(identifier)
+                if previous is not None and (previous.amount_cents != item.amount_cents
+                        or (previous.cash_change_cents is not None and item.cash_change_cents is not None
+                            and previous.cash_change_cents != item.cash_change_cents)):
+                    raise BankError("Nessie returned conflicting company activity identities.")
+                if previous is None or item.cash_change_cents is not None:
+                    activity[identifier] = item
+        return list(activity.values())
+
     async def transfer(self, from_id=None, to_id=None, amount_cents=None, description="", *,
                        from_account_id=None, to_account_id=None):
         source, destination = _ids(from_id, to_id, from_account_id, to_account_id)
@@ -378,6 +438,12 @@ class OfflineBankAdapter(_BankOperations):
         await self.get_balance(account_id)
         return [record.model_copy(deep=True) for record in self._transfers.values()
                 if account_id in {record.from_account_id, record.to_account_id}]
+
+    async def account_activity(self, account_id):
+        return [BankActivity(transfer_id=item.transfer_id, amount_cents=item.amount_cents,
+                cash_change_cents=-item.amount_cents if item.from_account_id == account_id else item.amount_cents,
+                status=item.status, kind="transfers", mode=self.mode)
+                for item in await self.list_transfers(account_id)]
 
     async def transfer(self, from_id=None, to_id=None, amount_cents=None, description="", *,
                        from_account_id=None, to_account_id=None):

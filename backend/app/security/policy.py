@@ -19,6 +19,7 @@ from app.contract_models import DocumentText, PolicyCheck, PolicyDecision, Sourc
 from app.security.graph import source_node_id
 from app.security.interpreter import Interpreter, PaymentIntent, PurchaseOrderRef, VendorRef
 from app.security.labels import DocumentSpan, Labeled, TrustedRecord, sources_of
+from app.world.vendors import history_check
 
 
 DEFAULT_INSTRUCTION = (
@@ -48,11 +49,15 @@ def _evidence(*values: Labeled) -> list[str]:
 class PolicyEngine:
     """The only automatic authorization decision, with no external side effects."""
 
-    def __init__(self, store, *, amount_tolerance_cents: int = 0, today: date | None = None):
+    def __init__(self, store, *, amount_tolerance_cents: int = 0,
+                 autonomy_limit_cents: int = 2_500_000, today: date | None = None):
         if type(amount_tolerance_cents) is not int or amount_tolerance_cents < 0:
             raise ValueError("Amount tolerance must be a nonnegative integer number of cents")
         self.store = store
         self.amount_tolerance_cents = amount_tolerance_cents
+        if type(autonomy_limit_cents) is not int or autonomy_limit_cents < 0:
+            raise ValueError("Autonomy limit must be a nonnegative integer number of cents")
+        self.autonomy_limit_cents = autonomy_limit_cents
         self.today = today or datetime.now(timezone.utc).date()
 
     def _vendor(self, intent: PaymentIntent, fields: Mapping[str, Labeled] | None = None) -> dict[str, Any] | None:
@@ -204,6 +209,9 @@ class PolicyEngine:
         span_verified = amount_verified and account_verified and number_verified
         on_file = normalize_account(vendor.get("account_on_file_display", vendor.get("remit_account_number"))) if vendor else ""
         payee_matches = bool(on_file and normalize_account(intent.to_account.value) == on_file)
+        history_passed, history_message = history_check(self.store, vendor, intent.to_account.value)
+        over_autonomy_limit = (type(intent.amount.value) is int
+                               and intent.amount.value > self.autonomy_limit_cents)
         letter_ids = {document.document_id for document in supporting_documents
                       if document.invoice_id == intent.invoice_id
                       and getattr(document, "document_type", None) == "vendor_bank_change_letter"}
@@ -230,10 +238,14 @@ class PolicyEngine:
             reasons.append("UNVERIFIED_SOURCE")
         if vendor is not None and not payee_matches:
             reasons.append("BANK_DETAILS_MISMATCH")
+        if vendor is not None and not history_passed:
+            reasons.append("BANK_DETAILS_MISMATCH")
         if vendor is not None and not amount_matches:
             reasons.append("AMOUNT_MISMATCH")
         if duplicate:
             reasons.append("DUPLICATE_INVOICE")
+        if over_autonomy_limit:
+            reasons.append("OVER_AUTONOMY_LIMIT")
 
         instruction_supported = trusted_instruction in (None, DEFAULT_INSTRUCTION)
         due_supported = True
@@ -257,6 +269,15 @@ class PolicyEngine:
             span.document_id, span.page, span.line, span.char_start, span.char_end, span.span_verified,
         )) for span in instruction_like_spans})
         name_evidence = [field_values["vendor_name"]] if field_values and "vendor_name" in field_values else []
+        payee_message = (
+            "Document remittance matches the trusted account and is corroborated." if payee_matches else
+            "Untrusted bank-change letter requests a different account; human countersign is required and the vendor master is unchanged."
+            if letter_requested else "Requested account differs from, or has no, trusted vendor account."
+        )
+        if not payee_matches and vendor is not None:
+            payee_message += " " + history_message
+        autonomy_message = (f" Automatic payment exceeds the agent autonomy limit of {self.autonomy_limit_cents} cents; "
+                            "an independent authorized approver is required.") if over_autonomy_limit else ""
         checks = [
             PolicyCheck(code="VENDOR_KNOWN", passed=vendor is not None,
                         message="Vendor resolves to a current trusted vendor master record." if vendor else
@@ -267,13 +288,11 @@ class PolicyEngine:
                         "Missing, foreign, unverified or ungrounded document payment source.",
                         evidence_node_ids=_evidence(intent.amount, intent.to_account, invoice_number)),
             PolicyCheck(code="PAYEE_ON_FILE", passed=payee_matches,
-                        message="Document remittance matches the trusted account and is corroborated." if payee_matches else
-                        "Untrusted bank-change letter requests a different account; human countersign is required and the vendor master is unchanged." if letter_requested else
-                        "Requested account differs from, or has no, trusted vendor account.",
+                        message=payee_message,
                         evidence_node_ids=_evidence(intent.to_account, vendor_sources)),
             PolicyCheck(code="AMOUNT_MATCHES_PO", passed=amount_matches,
-                        message=f"Positive USD amount matches an open vendor PO within {self.amount_tolerance_cents} cents." if amount_matches else
-                        "Amount does not match the current open vendor purchase order.",
+                        message=(f"Positive USD amount matches an open vendor PO within {self.amount_tolerance_cents} cents." if amount_matches else
+                                 "Amount does not match the current open vendor purchase order.") + autonomy_message,
                         evidence_node_ids=po_evidence),
             PolicyCheck(code="NOT_DUPLICATE", passed=not duplicate,
                         message="Invoice number has not been paid or reserved in this session." if not duplicate else
@@ -284,6 +303,9 @@ class PolicyEngine:
                         if instruction_like_spans else
                         "No instruction-like spans were flagged; detection is advisory only.",
                         evidence_node_ids=instruction_evidence),
+            PolicyCheck(code="VENDOR_HISTORY", passed=history_passed,
+                        message=history_message,
+                        evidence_node_ids=_evidence(intent.to_account, vendor_sources)),
         ]
         outcome = "BLOCK" if duplicate else "HOLD" if reasons else "ALLOW"
         return PolicyDecision(decision_id=f"decision-{uuid4().hex}", run_id=run_id,

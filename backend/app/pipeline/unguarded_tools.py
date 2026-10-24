@@ -199,6 +199,7 @@ class UnguardedTools:
             # are separate actions; an uncertain identical action is not retried.
             self._pay_results[digest] = None
             try:
+                await self.bus.before_payment()
                 bank_result = await self.bank.transfer(
                     from_account_id=source["account_id"], to_account_id=target["account_id"],
                     amount_cents=arguments.amount_cents,

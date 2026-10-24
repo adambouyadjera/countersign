@@ -98,3 +98,29 @@ an extraction operation uses `kind: "plan_step"`, `trust: "none"`, and
 link the operation to extracted fields; field and handle detail also retain that
 origin. This operation is distinct from the planner's DSL program steps and does
 not authorize a payment.
+
+## Finance reconciliation basis (proposed, not applied)
+
+The finance implementation retains the current response shape and puts its
+submitted-payment-register basis and actual status in each item's note. Nessie
+pending submissions can agree with the books while settled bank balances have
+not changed. Add explicit optional metadata so the frontend can distinguish
+these facts without parsing prose:
+
+```typescript
+interface Reconciliation {
+  basis?: "submitted_payment_register_including_pending";
+  observed_bank_balance_change_cents?: number; // independently observed settled balance change
+}
+```
+
+Under this basis the existing `bank_balance_change_cents` is the signed current-
+session bank register movement; `difference_cents` is register movement minus
+booked cash movement. Zero asserts register agreement, not settlement. Live
+evidence currently saves the actual balance observation separately. No shared
+contract file was edited for the finance task.
+
+Also update the illustrative limits in `contracts/fixtures/people.json` to the
+requested defaults: `person-ap-agent.approval_limit_cents` 150000 → 2500000 and
+`person-ap-manager.approval_limit_cents` 200000 → 5000000. The existing fixture
+remains schema-valid; no field or role needs to be removed or renamed.
