@@ -1,0 +1,120 @@
+"""Select configured service modes without any network-error fallback."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import httpx
+
+from app.config import Settings
+from app.adapters.implementations import (
+    AuditEventStore,
+    LiveAgentLLM,
+    LiveAuditSink,
+    LiveBankAdapter,
+    LiveExtractorLLM,
+    LiveMutatorLLM,
+    LivePlannerLLM,
+    OfflineAgentLLM,
+    OfflineAuditSink,
+    OfflineBankAdapter,
+    OfflineExtractorLLM,
+    OfflineMutatorLLM,
+    OfflinePlannerLLM,
+)
+from app.adapters.interfaces import (
+    AgentLLM, AuditSink, BankAdapter, ExtractorLLM, MutatorLLM, PlannerLLM,
+    ServiceAdapter,
+)
+
+
+@dataclass(frozen=True)
+class AdapterBundle:
+    bank: BankAdapter
+    audit: AuditSink
+    extractor: ExtractorLLM
+    planner: PlannerLLM
+    agent: AgentLLM
+    mutator: MutatorLLM
+
+    @property
+    def health_services(self) -> dict[str, ServiceAdapter]:
+        # The agent and mutator share a single Bitdeer service configuration.
+        return {
+            "nessie": self.bank, "elastic": self.audit,
+            "anthropic": self.planner, "gemini": self.extractor,
+            "bitdeer": self.agent,
+        }
+
+
+def _endpoint(base_url: str, path: str) -> str:
+    return f"{base_url.rstrip('/')}/{path}" if base_url else ""
+
+
+def build_adapters(
+    settings: Settings,
+    store: AuditEventStore,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> AdapterBundle:
+    """Build adapters; LLMs use missing-key offline stubs as explicitly requested."""
+    bank: BankAdapter = (
+        OfflineBankAdapter(detail="NESSIE_MODE=offline; bank operations are not implemented.")
+        if settings.nessie_mode == "offline" else
+        LiveBankAdapter(
+            key=settings.nessie_api_key, key_name="NESSIE_API_KEY",
+            url=_endpoint(settings.nessie_base_url, "customers"),
+            auth="nessie", transport=transport,
+        )
+    )
+    audit: AuditSink = (
+        OfflineAuditSink(store) if settings.elastic_mode == "offline" else
+        LiveAuditSink(
+            key=settings.elastic_api_key, key_name="ELASTIC_API_KEY",
+            url=_endpoint(settings.elastic_url, "_security/_authenticate"),
+            auth="elastic", transport=transport,
+        )
+    )
+    extractor: ExtractorLLM = (
+        LiveExtractorLLM(
+            key=settings.gemini_api_key, key_name="GEMINI_API_KEY",
+            url="https://generativelanguage.googleapis.com/v1beta/models",
+            auth="gemini", transport=transport,
+        ) if settings.gemini_api_key.get_secret_value() else
+        OfflineExtractorLLM(
+            detail="GEMINI_API_KEY is not configured; extractor uses an offline stub.",
+            missing_key=True,
+        )
+    )
+    planner: PlannerLLM = (
+        LivePlannerLLM(
+            key=settings.anthropic_api_key, key_name="ANTHROPIC_API_KEY",
+            url="https://api.anthropic.com/v1/models",
+            auth="anthropic", transport=transport,
+        ) if settings.anthropic_api_key.get_secret_value() else
+        OfflinePlannerLLM(
+            detail="ANTHROPIC_API_KEY is not configured; planner uses an offline stub.",
+            missing_key=True,
+        )
+    )
+    if settings.bitdeer_api_key.get_secret_value():
+        bitdeer = {
+            "key": settings.bitdeer_api_key, "key_name": "BITDEER_API_KEY",
+            "url": _endpoint(settings.bitdeer_base_url, "models"),
+            "auth": "bearer", "transport": transport,
+        }
+        agent: AgentLLM = LiveAgentLLM(**bitdeer)
+        mutator: MutatorLLM = LiveMutatorLLM(**bitdeer)
+    else:
+        agent = OfflineAgentLLM(
+            detail="BITDEER_API_KEY is not configured; unguarded agent uses an offline stub.",
+            missing_key=True,
+        )
+        mutator = OfflineMutatorLLM(
+            detail="BITDEER_API_KEY is not configured; mutator uses an offline stub.",
+            missing_key=True,
+        )
+    return AdapterBundle(
+        bank=bank, audit=audit, extractor=extractor,
+        planner=planner, agent=agent, mutator=mutator,
+    )
