@@ -1,5 +1,6 @@
-import { Button, ErrorState } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { isApiError } from '@/api/errors'
+import { cn } from '@/lib/cn'
 
 export interface RequestErrorProps {
   title: string
@@ -14,18 +15,20 @@ export function RequestError({ title, error, onRetry, retrying, className }: Req
   const code = isApiError(error) ? error.code : undefined
   const message = error instanceof Error ? error.message : String(error)
   return (
-    <ErrorState
-      title={title}
-      code={code}
-      message={message}
-      className={className}
-      action={
-        onRetry && (
-          <Button size="sm" variant="quiet" onClick={onRetry} disabled={retrying}>
-            {retrying ? 'Retrying…' : 'Retry'}
-          </Button>
-        )
-      }
-    />
+    <div
+      role="alert"
+      className={cn('flex flex-col gap-1.5 rounded-[8px] border border-bad-line bg-bad-bg px-3.5 py-2.5', className)}
+    >
+      <p className="m-0 font-bold text-bad">
+        {title}
+        {code && <code className="ml-2 font-mono text-meta font-normal">{code}</code>}
+      </p>
+      <p className="m-0 text-small text-fg">{message}</p>
+      {onRetry && (
+        <Button size="sm" variant="quiet" className="self-start" onClick={onRetry} disabled={retrying}>
+          {retrying ? 'retrying…' : 'retry'}
+        </Button>
+      )}
+    </div>
   )
 }

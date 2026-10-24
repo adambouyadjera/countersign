@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCents, MINUS } from './money'
+import { formatCents, MINUS, formatCentsShort } from './money'
 
 describe('formatCents', () => {
   it('formats whole and fractional cents', () => {
@@ -23,5 +23,14 @@ describe('formatCents', () => {
   it('rounds non-integer input and rejects non-finite values', () => {
     expect(formatCents(150.6)).toBe('$1.51')
     expect(formatCents(Number.NaN)).toBe('—')
+  })
+})
+
+describe('formatCentsShort', () => {
+  it('drops .00 for whole dollars and keeps real cents', () => {
+    expect(formatCentsShort(125000)).toBe('$1,250')
+    expect(formatCentsShort(0)).toBe('$0')
+    expect(formatCentsShort(1250)).toBe('$12.50')
+    expect(formatCentsShort(-64000)).toBe('−$640')
   })
 })

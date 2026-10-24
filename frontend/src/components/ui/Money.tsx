@@ -52,9 +52,9 @@ export function Money({ cents, currency = 'USD', flow = false, signed = false, c
       aria-label={formatCents(cents, currency)}
       className={cn(
         'font-mono tabular whitespace-nowrap transition-colors duration-300',
-        signed && cents < 0 && 'text-taint',
-        direction === 'up' && 'text-verified',
-        direction === 'down' && 'text-taint',
+        signed && cents < 0 && 'text-bad',
+        direction === 'up' && 'text-good',
+        direction === 'down' && 'text-bad',
         className,
       )}
     >

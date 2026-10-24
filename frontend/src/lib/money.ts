@@ -20,3 +20,9 @@ export function formatCents(cents: number, currency: Currency = 'USD'): string {
   const body = `${symbol}${dollarsFormatter.format(whole)}.${frac.toString().padStart(2, '0')}`
   return negative ? `${MINUS}${body}` : body
 }
+
+/** The mockups' short form: "$1,250" for whole dollars, full cents otherwise ("$12.50"). */
+export function formatCentsShort(cents: number, currency: Currency = 'USD'): string {
+  const full = formatCents(cents, currency)
+  return Math.round(cents) % 100 === 0 ? full.replace(/\.00$/, '') : full
+}

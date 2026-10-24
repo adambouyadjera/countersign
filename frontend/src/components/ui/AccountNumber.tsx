@@ -24,7 +24,7 @@ export function AccountNumber({ value, revealable = true, className }: AccountNu
       data-revealed={show ? 'true' : 'false'}
       className={cn(
         'inline-block font-mono tabular whitespace-nowrap tracking-[0.02em]',
-        revealable && 'cursor-default border-b border-dotted border-ink-soft/60',
+        revealable && 'cursor-default border-b border-dotted border-muted/60',
         className,
       )}
     >
