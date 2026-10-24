@@ -16,6 +16,7 @@ from app.adapters import (
     MutatorLLM, PlannerLLM, build_adapters,
 )
 from app.adapters.bank import BankError
+from app.adapters.implementations import MutatorError
 from app.config import Settings
 from app.contract_models import AuditAskRequest, RunEvent
 from app.store import Store
@@ -59,13 +60,14 @@ async def test_missing_keys_are_reported_without_network_and_protocols_match(sto
     assert isinstance(adapters.agent, AgentLLM)
     assert isinstance(adapters.mutator, MutatorLLM)
     result = await HealthChecker(adapters).check()
-    assert set(result.model_dump()) == {"nessie", "elastic", "anthropic", "gemini", "bitdeer"}
+    assert set(result.model_dump()) == {"nessie", "elastic", "anthropic", "gemini", "bitdeer", "mutator"}
     for name, health in result.model_dump().items():
         assert health["status"] == "missing_key"
         assert health["mode"] == "live"
         assert "not configured" in health["detail"]
-    assert adapters.mutator.mode == "offline"
-    with pytest.raises(NotImplementedError):
+    assert adapters.mutator.mode == "live"
+    assert (await adapters.mutator.health_check()).status == "missing_key"
+    with pytest.raises(MutatorError, match="not configured"):
         await adapters.mutator.mutate(template="synthetic", placement="footer")
 
 
@@ -73,7 +75,7 @@ async def test_missing_keys_are_reported_without_network_and_protocols_match(sto
 async def test_explicit_offline_modes_do_not_probe_even_with_keys(store):
     adapters = build_adapters(
         settings(
-            nessie_mode="offline", elastic_mode="offline", planner_mode="offline",
+            nessie_mode="offline", elastic_mode="offline", planner_mode="offline", mutator_mode="offline",
             nessie_api_key="synthetic-nessie-key", elastic_api_key="synthetic-elastic-key",
         ),
         store, transport=httpx.MockTransport(no_requests),
@@ -82,6 +84,7 @@ async def test_explicit_offline_modes_do_not_probe_even_with_keys(store):
     assert result.nessie.status == result.elastic.status == "offline"
     assert result.nessie.mode == result.elastic.mode == "offline"
     assert result.anthropic.status == result.anthropic.mode == "offline"
+    assert result.mutator.status == result.mutator.mode == "offline"
     assert "SQLite only" in result.elastic.detail
     with pytest.raises(BankError, match="Unknown offline"):
         await adapters.bank.transfer(from_account_id="from", to_account_id="to", amount_cents=1)
@@ -136,16 +139,17 @@ async def test_live_read_only_probes_are_cached_thirty_seconds_and_single_flight
     results = await asyncio.gather(*(checker.check() for _ in range(8)))
     assert all(value.status == "ok" for value in results[0].__dict__.values())
     assert len(calls) == 5
-    assert set(calls.values()) == {1}
+    assert calls["bitdeer.invalid"] == 2  # independent agent and mutator catalog probes
+    assert sum(calls.values()) == 6
 
     # Callers cannot mutate the cached object through the previous result.
     results[0].nessie.status = "error"
     now[0] += 29.9
     assert (await checker.check()).nessie.status == "ok"
-    assert set(calls.values()) == {1}
+    assert calls["bitdeer.invalid"] == 2 and sum(calls.values()) == 6
     now[0] += 0.1
     await asyncio.gather(*(checker.check() for _ in range(5)))
-    assert set(calls.values()) == {2}
+    assert calls["bitdeer.invalid"] == 4 and sum(calls.values()) == 12
     assert adapters.agent.mode == adapters.mutator.mode == "live"
 
 

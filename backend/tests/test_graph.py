@@ -214,6 +214,31 @@ def test_overlay_retains_held_evidence_after_human_resolution(evidence):
     assert next(node for node in unrelated.nodes if node.kind == "action").status == "held"
 
 
+def test_unguarded_payment_cannot_resolve_a_countersign_hold(evidence):
+    graph = build_graph(**evidence)
+    payment = {
+        "transfer_id": "unguarded-payment-evidence", "transfer_status": "pending",
+        "from_account_id": "company-account", "to_account_id": "attacker-account",
+        "to_display_number": "999900009999", "payee_label": "Northwind Remittance Services",
+        "payee_on_file": False, "amount_cents": 64000, "bank_mode": "offline",
+    }
+    unguarded = event("payment.executed", {"via": "agent", "payment": payment}).model_copy(update={"lane": "unguarded"})
+    overlaid = overlay_resolution(graph, [unguarded])
+    action = next(node for node in overlaid.nodes if node.kind == "action")
+    assert action.status == "held" and action.detail["outcome"] == "HOLD"
+    assert "transfer_id" not in action.detail and "to_account_id" not in action.detail
+
+    approved_payment = {**payment, "transfer_id": "countersign-approval-payment-evidence",
+        "to_account_id": "trusted-vendor-account", "to_display_number": "300300003333",
+        "payee_label": "Golden Gate Sanitation", "payee_on_file": True}
+    countersigned = event("payment.executed", {"via": "approval", "payment": approved_payment})
+    overlaid = overlay_resolution(graph, [countersigned, unguarded])
+    action = next(node for node in overlaid.nodes if node.kind == "action")
+    assert action.status == "approved"
+    assert action.detail["transfer_id"] == "countersign-approval-payment-evidence"
+    assert action.detail["to_account_id"] == "trusted-vendor-account"
+
+
 @pytest.mark.asyncio
 async def test_graph_endpoint_checks_run_invoice_membership_and_resolution(tmp_path, evidence):
     app = create_app(Settings(_env_file=None, nessie_mode="offline", extractor_mode="offline",

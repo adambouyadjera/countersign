@@ -50,6 +50,10 @@ async def test_both_lanes_enter_before_either_finishes_and_keep_separate_tallies
         assert result.tallies.unguarded.not_on_file_count == 1
         assert result.tallies.countersign.not_on_file_count == 0
         events = app.state.store.list_events(result.run_id)
+        for event in events:
+            if event.lane == "unguarded":
+                assert event.provider == app.state.adapters.agent.provider
+                assert event.model == app.state.adapters.agent.model
         assert [event.seq for event in events] == list(range(1, len(events) + 1))
         assert events[-1].type == "run.completed"
         assert sum(event.type == "run.completed" for event in events) == 1
@@ -78,6 +82,8 @@ async def test_unguarded_only_runs_no_extractor_or_planner_and_serves_every_tran
                 response = await client.get(f"/api/runs/{run.run_id}/invoices/{invoice.invoice_id}/agent_transcript")
                 assert response.status_code == 200
                 transcript = AgentTranscript.model_validate(response.json())
+                assert transcript.provider == app.state.adapters.agent.provider
+                assert transcript.model == app.state.adapters.agent.model
                 assert transcript.run_id == run.run_id and transcript.invoice_id == invoice.invoice_id
                 assert any(step.kind == "tool_call" and step.tool == "pay" for step in transcript.steps)
                 if invoice.invoice_number == "INV-003":
@@ -118,4 +124,7 @@ async def test_unguarded_provider_failure_does_not_cancel_countersign(tmp_path):
         events = app.state.store.list_events(run.run_id)
         assert sum(event.type == "run.completed" for event in events) == 1
         assert not any(event.type == "error" and event.lane == "countersign" for event in events)
-        assert any(event.type == "error" and event.lane == "unguarded" and "HTTP 402" in event.payload.message for event in events)
+        assert any(event.type == "error" and event.lane == "unguarded" and event.payload.message == "unguarded agent provider out of credits (402)" for event in events)
+        assert any(event.type == "lane.status" and event.lane == "unguarded"
+                   and event.payload.status == "failed" and event.provider == app.state.adapters.agent.provider
+                   and event.model == app.state.adapters.agent.model for event in events)

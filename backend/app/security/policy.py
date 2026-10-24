@@ -75,7 +75,8 @@ class PolicyEngine:
                 return None
         return vendor
 
-    def _slice(self, source: DocumentSpan, invoice_id: str) -> str | None:
+    def _slice(self, source: DocumentSpan, invoice_id: str, *, kind: str,
+               supporting_documents: Sequence[DocumentText] = ()) -> str | None:
         if not source.span_verified:
             return None
         record = self.store.get_record("documents", source.document_id)
@@ -87,13 +88,24 @@ class PolicyEngine:
             return None
         if document.invoice_id != invoice_id or document.document_id != source.document_id:
             return None
+        if getattr(document, "document_type", None) not in (None, "invoice"):
+            # A letter is evidence of a requested account, never evidence of an
+            # invoice amount or vendor identity. Its server-owned association
+            # must be supplied explicitly by the run, not inferred from a
+            # self-asserted span or arbitrary document ID.
+            authorized = [item for item in supporting_documents
+                          if item.document_id == document.document_id]
+            if (kind != "account" or getattr(document, "document_type", None) != "vendor_bank_change_letter"
+                    or len(authorized) != 1 or authorized[0] != document):
+                return None
         lines = [line.text for page in document.pages if page.page == source.page
                  for line in page.lines if line.line == source.line]
         if (len(lines) != 1 or not 0 <= source.char_start < source.char_end <= len(lines[0])):
             return None
         return lines[0][source.char_start:source.char_end]
 
-    def _verified(self, value: Labeled, invoice_id: str, *, kind: str) -> bool:
+    def _verified(self, value: Labeled, invoice_id: str, *, kind: str,
+                  supporting_documents: Sequence[DocumentText] = ()) -> bool:
         spans = [source for source in value.sources if isinstance(source, DocumentSpan)]
         # No source must not vacuously authorize a planner-invented literal.
         if not spans:
@@ -105,7 +117,8 @@ class PolicyEngine:
         if kind == "string" and (not isinstance(value.value, str) or not value.value.strip()):
             return False
         for source in spans:
-            quote = self._slice(source, invoice_id)
+            quote = self._slice(source, invoice_id, kind=kind,
+                                supporting_documents=supporting_documents)
             if quote is None:
                 return False
             if kind == "money":
@@ -125,14 +138,16 @@ class PolicyEngine:
                 return False
         return True
 
-    def corroborate(self, intent: PaymentIntent) -> PaymentIntent:
+    def corroborate(self, intent: PaymentIntent, *,
+                    supporting_documents: Sequence[DocumentText] = ()) -> PaymentIntent:
         """Return an enriched value, preserving every original source."""
         vendor = self._vendor(intent)
         if vendor is None:
             return intent
         expected = normalize_account(vendor.get("account_on_file_display", vendor.get("remit_account_number")))
         if (not expected or normalize_account(intent.to_account.value) != expected
-                or not self._verified(intent.to_account, intent.invoice_id, kind="account")):
+                or not self._verified(intent.to_account, intent.invoice_id, kind="account",
+                                      supporting_documents=supporting_documents)):
             return intent
         payee = Labeled(intent.to_account.value,
                         intent.to_account.sources | {TrustedRecord("vendor", vendor["vendor_id"])})
@@ -178,15 +193,22 @@ class PolicyEngine:
         instruction_like_spans: Sequence[SourceSpan] = (),
         field_values: Mapping[str, Labeled] | None = None,
         trusted_instruction: str | None = None,
+        supporting_documents: Sequence[DocumentText] = (),
     ) -> PolicyDecision:
         vendor = self._vendor(intent, field_values)
         vendor_sources = Labeled(None, {TrustedRecord("vendor", vendor["vendor_id"])}) if vendor else Labeled(None)
         amount_verified = self._verified(intent.amount, intent.invoice_id, kind="money")
-        account_verified = self._verified(intent.to_account, intent.invoice_id, kind="account")
+        account_verified = self._verified(intent.to_account, intent.invoice_id, kind="account",
+                                          supporting_documents=supporting_documents)
         number_verified = self._verified(invoice_number, intent.invoice_id, kind="string")
         span_verified = amount_verified and account_verified and number_verified
         on_file = normalize_account(vendor.get("account_on_file_display", vendor.get("remit_account_number"))) if vendor else ""
         payee_matches = bool(on_file and normalize_account(intent.to_account.value) == on_file)
+        letter_ids = {document.document_id for document in supporting_documents
+                      if document.invoice_id == intent.invoice_id
+                      and getattr(document, "document_type", None) == "vendor_bank_change_letter"}
+        letter_requested = any(isinstance(source, DocumentSpan) and source.document_id in letter_ids
+                               for source in intent.to_account.sources)
         order, matched_po = self._matched_order(intent, vendor, matched_po, field_values)
         open_amount = order.get("open_amount_cents", order.get("amount_cents")) if order else None
         amount_matches = bool(
@@ -246,6 +268,7 @@ class PolicyEngine:
                         evidence_node_ids=_evidence(intent.amount, intent.to_account, invoice_number)),
             PolicyCheck(code="PAYEE_ON_FILE", passed=payee_matches,
                         message="Document remittance matches the trusted account and is corroborated." if payee_matches else
+                        "Untrusted bank-change letter requests a different account; human countersign is required and the vendor master is unchanged." if letter_requested else
                         "Requested account differs from, or has no, trusted vendor account.",
                         evidence_node_ids=_evidence(intent.to_account, vendor_sources)),
             PolicyCheck(code="AMOUNT_MATCHES_PO", passed=amount_matches,

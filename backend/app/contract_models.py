@@ -119,6 +119,7 @@ class ServicesHealth(ContractModel):
     anthropic: ServiceHealth
     gemini: ServiceHealth
     bitdeer: ServiceHealth
+    mutator: ServiceHealth = OptionalField()
 
 
 class Health(ContractModel):
@@ -131,7 +132,7 @@ class ResetResponse(ContractModel):
 
 
 class BatchRequest(ContractModel):
-    kind: Literal["standard"]
+    kind: Literal["standard", "bank_change"]
 
 
 class InvoiceSummary(ContractModel):
@@ -145,11 +146,19 @@ class InvoiceSummary(ContractModel):
     document_id: str
 
 
+class SupportingDocument(ContractModel):
+    document_id: str
+    invoice_id: str
+    vendor_id: str
+    document_type: Literal["vendor_bank_change_letter"]
+
+
 class Batch(ContractModel):
     batch_id: str
-    kind: Literal["standard", "attack"]
+    kind: Literal["standard", "attack", "bank_change"]
     created_at: Timestamp
     invoices: list[InvoiceSummary]
+    supporting_documents: list[SupportingDocument] = OptionalField()
 
 
 class DocumentLine(ContractModel):
@@ -166,6 +175,7 @@ class DocumentText(ContractModel):
     document_id: str
     invoice_id: str
     pages: list[DocumentPage]
+    document_type: Literal["invoice", "vendor_bank_change_letter"] = OptionalField()
 
 
 class AttackRequest(ContractModel):
@@ -182,6 +192,7 @@ class RunRequest(ContractModel):
     batch_id: str
     lanes: list[Lane]
     instruction: str = OptionalField()
+    unguarded_mode: Literal["ap", "ap_with_vendor_updates"] = OptionalField()
 
 
 class LaneTally(ContractModel):
@@ -210,6 +221,7 @@ class Run(ContractModel):
     created_at: Timestamp
     lanes: list[RunLane]
     tallies: RunTallies = OptionalField()
+    unguarded_mode: Literal["ap", "ap_with_vendor_updates"] = OptionalField()
 
 
 class SourceSpan(ContractModel):
@@ -335,7 +347,9 @@ class AgentTranscriptStep(ContractModel):
 class AgentTranscript(ContractModel):
     run_id: str
     invoice_id: str
+    provider: str = OptionalField()
     model: str
+    unguarded_mode: Literal["ap", "ap_with_vendor_updates"] = OptionalField()
     steps: list[AgentTranscriptStep]
 
 
@@ -698,6 +712,9 @@ class EventBase(ContractModel):
     seq: StrictInt
     ts: Timestamp
     mode: Mode = OptionalField()
+    provider: str = OptionalField()
+    model: str = OptionalField()
+    unguarded_mode: Literal["ap", "ap_with_vendor_updates"] = OptionalField()
 
 
 class RunStartedEvent(EventBase):

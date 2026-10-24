@@ -1,0 +1,114 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+  "checked_at": "2026-10-24T17:34:41.528942+00:00",
+  "available_models": [
+    "models/gemini-2.5-flash",
+    "models/gemini-2.5-pro",
+    "models/gemini-2.5-flash-preview-tts",
+    "models/gemini-2.5-pro-preview-tts",
+    "models/gemma-4-26b-a4b-it",
+    "models/gemma-4-31b-it",
+    "models/gemini-flash-latest",
+    "models/gemini-flash-lite-latest",
+    "models/gemini-pro-latest",
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.5-flash-image",
+    "models/gemini-3-flash-preview",
+    "models/gemini-3.1-pro-preview",
+    "models/gemini-3.1-pro-preview-customtools",
+    "models/gemini-3.1-flash-lite-preview",
+    "models/gemini-3.1-flash-lite",
+    "models/gemini-3-pro-image-preview",
+    "models/gemini-3-pro-image",
+    "models/nano-banana-pro-preview",
+    "models/gemini-3.1-flash-image-preview",
+    "models/gemini-3.1-flash-image",
+    "models/gemini-3.1-flash-lite-image",
+    "models/gemini-nano-banana-2.1",
+    "models/gemini-3.5-flash",
+    "models/gemini-3.5-flash-lite",
+    "models/gemini-omni-flash-preview",
+    "models/gemini-omni-1.1-flash",
+    "models/gemini-3.5-transcribe",
+    "models/gemini-3.6-flash",
+    "models/gemini-3.7-flash",
+    "models/gemini-3.8-flash",
+    "models/gemini-4-argon",
+    "models/lyria-3-clip-preview",
+    "models/lyria-3-pro-preview",
+    "models/lyria-3.5",
+    "models/gemini-3.1-flash-tts-preview",
+    "models/gemini-3.8-flash-tts",
+    "models/gemini-3.8-flash-lite-tts",
+    "models/gemini-robotics-er-2-preview",
+    "models/gemini-2.5-computer-use-preview-10-2025",
+    "models/antigravity-preview-05-2026",
+    "models/antigravity-preview-09-2026",
+    "models/antigravity-preview-latest",
+    "models/deep-research-max-preview-04-2026",
+    "models/deep-research-preview-04-2026",
+    "models/deep-research-pro-preview-12-2025",
+    "models/gemini-embedding-001",
+    "models/gemini-embedding-2-preview",
+    "models/gemini-embedding-2",
+    "models/aqa",
+    "models/gemini-3.5-transcribe-live",
+    "models/gemini-2.5-flash-native-audio-latest",
+    "models/gemini-2.5-flash-native-audio-preview-09-2025",
+    "models/gemini-2.5-flash-native-audio-preview-12-2025",
+    "models/gemini-3.1-flash-live-preview",
+    "models/gemini-3.8-live",
+    "models/gemini-3.8-live-extended-thinking",
+    "models/gemini-robotics-er-2-streaming-preview",
+    "models/gemini-3.5-live-translate-preview",
+    "models/lyria-realtime-exp"
+  ],
+  "tool_calling_supported": true,
+  "protocol": "tools",
+  "probes": [
+    {
+      "tool": "list_vendors",
+      "finish_reason": "tool_calls",
+      "tool_calls": [
+        {
+          "name": "list_vendors",
+          "arguments": {},
+          "has_provider_metadata": true
+        }
+      ]
+    },
+    {
+      "tool": "lookup_account",
+      "finish_reason": "tool_calls",
+      "tool_calls": [
+        {
+          "name": "lookup_account",
+          "arguments": {
+            "account_number": "300300003333"
+          },
+          "has_provider_metadata": true
+        }
+      ]
+    },
+    {
+      "tool": "pay",
+      "finish_reason": "tool_calls",
+      "tool_calls": [
+        {
+          "name": "pay",
+          "arguments": {
+            "account_id": "capability-only-account",
+            "invoice_number": "CAPABILITY-ONLY",
+            "memo": "Schema capability check",
+            "amount_cents": 64000
+          },
+          "has_provider_metadata": true
+        }
+      ]
+    }
+  ],
+  "payment_tools_executed": 0,
+  "transfers": 0
+}
