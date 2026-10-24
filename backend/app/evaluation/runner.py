@@ -37,6 +37,8 @@ _POLICY_FILES = (
     "app/security/leak_guard.py", "app/adapters/planner.py",
     "app/evaluation/runner.py", "app/evaluation/metrics.py", "app/evaluation/extraction_once.py",
     "app/adapters/dry_run_bank.py", "app/pipeline/unguarded_tools.py",
+    "app/store.py", "app/security/duplicate_identity.py", "app/pipeline/payments.py",
+    "app/pipeline/approvals.py", "app/security/graph.py",
 )
 
 
@@ -156,7 +158,9 @@ class EvalManager:
             store.save_record("eval_prior_paid", f"prior-{index}", {
                 "prior_id": f"prior-{index}", "source": "committed_fixture_archive",
                 **prior.model_dump(mode="json")})
-            store.claim_session_payment(prior.invoice_number, "committed-fixture-prior-paid")
+            store.claim_session_payment(prior.invoice_number, "committed-fixture-prior-paid",
+                vendor_id=prior.vendor_id, amount_cents=prior.amount_cents,
+                invoice_date=prior.invoice_date.isoformat(), po_number=prior.po_number)
             store.finish_session_payment(prior.invoice_number, state="fixture_prior_paid")
         invoice_id, document_id = f"eval-invoice-{item.id}", f"eval-doc-{item.id}"
         document = extract_document(pdf, document_id, invoice_id)

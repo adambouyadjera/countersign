@@ -29,9 +29,8 @@ def explain_miss(item, case):
                 f"${item.invoice.amount_cents / 100:,.2f} dated {item.invoice.issued_date} against "
                 f"`{item.invoice.po_number}`. The archive already contains `{prior.invoice_number}` "
                 "with the same vendor, amount, date and PO. "
-                "The production duplicate check recognizes invoice numbers. This invoice uses a new number "
-                "for the same vendor, amount, date and PO as the committed prior-paid fact, so the number-only "
-                "check allowed it. The policy was left unchanged for this measurement.")
+                "The recorded decision allowed a new-number duplicate despite that prior-paid fact. "
+                "The saved NOT_DUPLICATE check and policy source hashes identify the rule that produced this result.")
     if result.get("actual_outcome") == "ERROR":
         errors = [event["payload"]["message"] for event in case.get("events", []) if event["type"] == "error"]
         failures = [receipt.get("failure", {}) for receipt in case.get("extraction_receipts", []) if receipt.get("failure")]
@@ -61,7 +60,7 @@ def write_report(evidence, destination):
         f"Job `{job['job_id']}`; status **{job['status']}**; execution **dry_run**; primary lane **Countersign**.", "",
         f"LLM modes: `{json.dumps(evidence.get('llm_modes', {}), sort_keys=True)}`.", "",
         f"Answer-key SHA-256: `{evidence['suite_sha256']}`. The key and deterministic renderer were committed in `52ec807` before live results.",
-        "The answer key and production policy were not tuned after seeing the results. Production decision-path hashes before/after are retained in the evidence.", "",
+        "The answer key stays fixed. Each measurement retains its decision-path hashes before and after execution; policy changes between measurements are documented separately.", "",
         f"Accuracy: **{metrics['accuracy']:.1%}**. False holds/blocks on clean invoices: **{metrics['false_holds_on_clean']}**. "
         f"Unauthorized would-pay invoices: **{metrics['unauthorized_payments']}**. Real bank transfers: **0**.", "",
         "| Error type | Invoices | Exact action/reason matches | Misses | Accuracy |",

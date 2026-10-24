@@ -19,6 +19,7 @@ from app.contract_models import DocumentText, PolicyCheck, PolicyDecision, Sourc
 from app.security.graph import source_node_id
 from app.security.interpreter import Interpreter, PaymentIntent, PurchaseOrderRef, VendorRef
 from app.security.labels import DocumentSpan, Labeled, TrustedRecord, sources_of
+from app.security.duplicate_identity import normalized_invoice_date
 from app.world.vendors import history_check
 
 
@@ -229,8 +230,20 @@ class PolicyEngine:
         if field_values is not None:
             amount_matches = amount_matches and bool(currency is not None and currency.value == "USD"
                                                      and self._verified(currency, intent.invoice_id, kind="string"))
+        duplicate_fields = []
+        references = {}
+        for name in ("invoice_date", "po_number"):
+            value = field_values.get(name) if field_values is not None else None
+            if value is not None and self._verified(value, intent.invoice_id, kind="string"):
+                reference = normalized_invoice_date(value.value) if name == "invoice_date" else value.value
+                if reference:
+                    references[name] = reference
+                    duplicate_fields.append(value)
         duplicate = bool(isinstance(invoice_number.value, str) and invoice_number.value.strip()
-                         and self.store.has_session_payment(invoice_number.value))
+                         and self.store.has_session_payment(invoice_number.value,
+                             vendor_id=vendor["vendor_id"] if vendor is not None else None,
+                             amount_cents=intent.amount.value if amount_verified else None,
+                             **references))
         reasons = []
         if vendor is None:
             reasons.append("UNKNOWN_VENDOR")
@@ -295,9 +308,10 @@ class PolicyEngine:
                                  "Amount does not match the current open vendor purchase order.") + autonomy_message,
                         evidence_node_ids=po_evidence),
             PolicyCheck(code="NOT_DUPLICATE", passed=not duplicate,
-                        message="Invoice number has not been paid or reserved in this session." if not duplicate else
-                        "Invoice number is already paid or reserved in this session.",
-                        evidence_node_ids=_evidence(invoice_number)),
+                        message="No paid or pending payment matches the invoice number, or vendor and amount plus invoice date or PO." if not duplicate else
+                        "Already paid or pending: matching invoice number, or the same vendor and amount with the same invoice date or PO.",
+                        evidence_node_ids=_evidence(invoice_number, intent.vendor, vendor_sources,
+                                                    intent.amount, *duplicate_fields)),
             PolicyCheck(code="INSTRUCTIONS_IN_DOCUMENT", passed=True,
                         message="Warning: instruction-like document text is attached as untrusted evidence; detection does not authorize or deny payment."
                         if instruction_like_spans else

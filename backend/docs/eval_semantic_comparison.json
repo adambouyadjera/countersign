@@ -1,0 +1,22 @@
+{
+  "before_job_id": "eval-0188b35d6a2e426280f5999977d9054b",
+  "after_job_id": "eval-6c63e04a2d3b4596b98d7cc1235df292",
+  "before_accuracy": 0.95,
+  "after_accuracy": 1.0,
+  "before_false_holds_on_clean": 0,
+  "after_false_holds_on_clean": 0,
+  "before_unauthorized_would_pay": 2,
+  "after_unauthorized_would_pay": 0,
+  "baseline_evidence_sha256": "3a276abeafb8fd11c040640df93f401b13a86087fce2d14960e878ada8241f5e",
+  "answer_key_sha256": "1645c7adf5a7f2c6635e003f144652660a2842f27bce1b95f95d2edd060eb352",
+  "answer_key_unchanged": true,
+  "baseline_evidence_unchanged": true,
+  "decision_hashes_unchanged_during_after_run": true,
+  "api_get_status": 200,
+  "cache_hits": 40,
+  "fresh_extraction_calls": 0,
+  "planner_prompts_rechecked": 40,
+  "leak_guard_matches": 0,
+  "bank_calls": 0,
+  "submitted_transfers": 0
+}
