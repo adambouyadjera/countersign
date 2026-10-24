@@ -63,3 +63,33 @@ describe('MockEventSource', () => {
     vi.useRealTimers()
   })
 })
+
+describe('mock POST /api/attacks', () => {
+  const body = { vendor_id: 'VEN-003', attack_text: 'neutral test text {{ATTACKER_ACCOUNT}}', placement: 'footer' }
+
+  it('returns the fixture batch as kind "attack" for a valid request', () => {
+    const r = route('POST', '/api/attacks', body)
+    expect(r.status).toBe(200)
+    expect((r.body as { kind: string }).kind).toBe('attack')
+  })
+
+  it.each([
+    [{ ...body, attack_text: '' }, 'attack_text'],
+    [{ ...body, attack_text: 'x'.repeat(601) }, 'attack_text'],
+    [{ ...body, placement: 'margin' }, 'placement'],
+    [{ ...body, vendor_id: 'VEN-999' }, 'vendor_id'],
+  ])('answers 422 validation_error for a bad request (%#)', (bad, field) => {
+    const r = route('POST', '/api/attacks', bad)
+    expect(r.status).toBe(422)
+    expect((r.body as { error: { code: string; message: string } }).error.code).toBe('validation_error')
+    expect((r.body as { error: { message: string } }).error.message).toContain(field)
+  })
+})
+
+describe('mock GET /api/approvals', () => {
+  it('honours ?status=', () => {
+    expect(route('GET', '/api/approvals?status=pending', undefined).body).toEqual([])
+    expect((route('GET', '/api/approvals?status=resolved', undefined).body as unknown[]).length).toBe(1)
+    expect((route('GET', '/api/approvals', undefined).body as unknown[]).length).toBe(1)
+  })
+})

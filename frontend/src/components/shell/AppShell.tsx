@@ -5,6 +5,7 @@ import { cn } from '@/lib/cn'
 import { useConsoleStore } from '@/state/consoleStore'
 import { ActingAs } from './ActingAs'
 import { AutopilotStatus } from './AutopilotStatus'
+import { QueueDrawer } from './QueueDrawer'
 import { ServiceHealth } from './ServiceHealth'
 
 const linkClass = (active: boolean) =>
@@ -66,6 +67,7 @@ export function AppShell() {
         </nav>
         {/* The case file mockup's header has no autopilot status; it shows who you act as. */}
         {!onCase && <AutopilotStatus />}
+        <QueueDrawer />
         <MockBadge />
         {onCase && <ActingAs className="ml-auto" />}
         <ServiceHealth className={onCase ? undefined : 'ml-auto'} />

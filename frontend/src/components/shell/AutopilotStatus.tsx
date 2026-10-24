@@ -1,10 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
-import { getAutopilot } from '@/api/client'
 import { isApiError } from '@/api/errors'
+import { useAutopilot } from '@/hooks/queries'
 
 /** "autopilot on/off" from GET /api/autopilot. Says "unavailable" rather than guessing when the call fails. */
 export function AutopilotStatus() {
-  const q = useQuery({ queryKey: ['autopilot'], queryFn: getAutopilot, refetchInterval: 15_000 })
+  const q = useAutopilot()
   if (q.isPending) return <span className="text-muted">autopilot …</span>
   if (q.isError) {
     return (

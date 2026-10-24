@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   getAgentTranscript,
+  getAutopilot,
   getBatch,
   getDocument,
   getInvoiceGraph,
@@ -9,6 +10,7 @@ import {
   getRunDecisions,
   getVendor,
   listApprovals,
+  listInboxItems,
   listPeople,
 } from '@/api/client'
 
@@ -81,4 +83,24 @@ export function useAgentTranscript(runId: string, invoiceId: string, enabled: bo
     enabled,
     retry: false,
   })
+}
+
+/** GET /api/autopilot, shared by the header and the Attack Lab. */
+export function useAutopilot() {
+  return useQuery({ queryKey: ['autopilot'], queryFn: getAutopilot, refetchInterval: 15_000, retry: false })
+}
+
+/** GET /api/approvals?status=pending, for the header's countersign queue. */
+export function usePendingApprovals() {
+  return useQuery({
+    queryKey: ['approvals', 'pending'],
+    queryFn: () => listApprovals('pending'),
+    refetchInterval: 10_000,
+    retry: false,
+  })
+}
+
+/** GET /api/inbox, polled every 2 s while waiting for autopilot to pick up an attack. */
+export function useInbox(enabled: boolean) {
+  return useQuery({ queryKey: ['inbox'], queryFn: listInboxItems, enabled, refetchInterval: enabled ? 2_000 : false, retry: false })
 }

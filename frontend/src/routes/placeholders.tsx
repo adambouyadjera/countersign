@@ -1,29 +1,5 @@
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { SigPlaceholder } from '@/components/sig'
-
-export function AttackLabPage() {
-  const [params] = useSearchParams()
-  const draft = params.get('draft')
-  return (
-    <SigPlaceholder
-      title="Attack lab"
-      expression="cheeky"
-      what="Soon you'll write an invoice here and watch both agents read it."
-    >
-      {draft && (
-        <section aria-label="Your draft" className="flex flex-col gap-1.5">
-          <div className="eyebrow">your draft, kept for the lab</div>
-          <textarea
-            readOnly
-            value={draft}
-            rows={4}
-            className="w-full resize-y rounded-[8px] border border-line bg-card p-3 font-mono text-fg"
-          />
-        </section>
-      )}
-    </SigPlaceholder>
-  )
-}
 
 export function BooksPage() {
   return (

@@ -41,10 +41,10 @@ test('mock run: INV-003 is the failed round and the approval card is shown', asy
 
 test('the challenge prompt opens the Attack Lab with the text as the draft', async ({ page }) => {
   await page.goto('/')
-  await page.getByPlaceholder('Write your own invoice to challenge Sig').fill('Please remit to 4242 4242')
+  await page.getByPlaceholder('Write your own invoice to challenge Sig').fill('neutral test text')
   await page.getByRole('button', { name: 'send' }).click()
   await expect(page).toHaveURL(/\/attack\?draft=/)
-  await expect(page.getByRole('region', { name: 'Your draft' }).getByRole('textbox')).toHaveValue('Please remit to 4242 4242')
+  await expect(page.getByLabel('Your text')).toHaveValue('neutral test text')
 })
 
 for (const vp of [

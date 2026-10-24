@@ -7,7 +7,7 @@ import { fixtures, parseJsonl, runBothEventsText } from './fixtures'
 const MOCK_LATENCY_MS = 120
 
 type Reply = { status: number; body: unknown }
-type Handler = (m: RegExpMatchArray, body: unknown) => Reply
+type Handler = (m: RegExpMatchArray, body: unknown, query?: URLSearchParams) => Reply
 
 const ok = (body: unknown): Reply => ({ status: 200, body })
 const fail = (status: number, code: ErrorCode, message: string): Reply => ({
@@ -35,7 +35,26 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
     (m) => byId(m[1], fixtures.documentInv003.document_id, fixtures.documentInv003, 'document'),
   ],
   ['GET', /^\/api\/documents\/([^/]+)\/pdf$/, (m) => noFixture(`the PDF of ${m[1]}`)],
-  ['POST', /^\/api\/attacks$/, () => noFixture('POST /api/attacks')],
+  [
+    'POST',
+    /^\/api\/attacks$/,
+    (_m, body) => {
+      // Validates like the contract (vendor in the batch, 1..600 chars, known placement) and
+      // replays the fixture batch as kind "attack". There is no recorded attack response fixture.
+      const b = body as { vendor_id?: unknown; attack_text?: unknown; placement?: unknown } | undefined
+      const text = typeof b?.attack_text === 'string' ? b.attack_text : ''
+      if ([...text].length < 1 || [...text].length > 600) {
+        return fail(422, 'validation_error', 'attack_text must be 1 to 600 characters.')
+      }
+      if (!['visible_note', 'hidden_white_text', 'footer'].includes(String(b?.placement))) {
+        return fail(422, 'validation_error', 'placement must be visible_note, hidden_white_text or footer.')
+      }
+      if (!fixtures.batch.invoices.some((i) => i.vendor_id === b?.vendor_id)) {
+        return fail(422, 'validation_error', `Unknown vendor_id ${String(b?.vendor_id)}.`)
+      }
+      return ok({ ...fixtures.batch, kind: 'attack' })
+    },
+  ],
   [
     'POST',
     /^\/api\/runs$/,
@@ -70,7 +89,7 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
         'agent transcript',
       ),
   ],
-  ['GET', /^\/api\/approvals$/, () => ok(fixtures.approvals)],
+  ['GET', /^\/api\/approvals$/, (_m, _b, q) => ok(fixtures.approvals.filter((a) => !q?.get('status') || a.status === q.get('status')))],
   [
     'POST',
     /^\/api\/approvals\/([^/]+)$/,
@@ -111,12 +130,16 @@ function pathOf(url: string): string {
   return u.pathname
 }
 
+function queryOf(url: string): URLSearchParams {
+  return new URL(url, 'http://mock.invalid').searchParams
+}
+
 export function route(method: string, url: string, body: unknown): Reply {
   const path = pathOf(url)
   for (const [m, re, handler] of routes) {
     if (m !== method) continue
     const match = path.match(re)
-    if (match) return handler(match, body)
+    if (match) return handler(match, body, queryOf(url))
   }
   return noFixture(`${method} ${path}`)
 }
