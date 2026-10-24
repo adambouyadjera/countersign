@@ -18,3 +18,5 @@ test-results/
 # os and editors
 .DS_Store
 .idea/
+*.db-wal
+*.db-shm

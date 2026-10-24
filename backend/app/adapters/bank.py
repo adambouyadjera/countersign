@@ -16,6 +16,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, SecretStr, StrictInt
 
 from app.contract_models import AccountBalance, Balances, Payment, ServiceHealth, SessionTransfer
+from app.adapters.payment_models import BankPayment
 
 
 class BankError(RuntimeError):
@@ -71,7 +72,7 @@ class _BankOperations:
             return []
         return [row for row in self._store.list_records("bank_directory") if row["mode"] == self.mode]
 
-    def _payment(self, record: BankTransfer) -> Payment:
+    def _payment(self, record: BankTransfer, *, detail: dict | None = None) -> Payment:
         destination = next((a for a in self._directory() if a["account_id"] == record.to_account_id), None)
         # Directory membership resolves bank routing only. The vendor master is
         # the independent, trusted authority for accounts on file.
@@ -80,7 +81,7 @@ class _BankOperations:
             vendor.get("account_on_file_display", vendor.get("remit_account_number")) == destination["display_number"]
             for vendor in vendors
         ))
-        return Payment(
+        fields = dict(
             transfer_id=record.transfer_id, transfer_status=record.status,
             from_account_id=record.from_account_id, to_account_id=record.to_account_id,
             to_display_number=destination["display_number"] if destination else "",
@@ -88,6 +89,7 @@ class _BankOperations:
             payee_on_file=on_file,
             amount_cents=record.amount_cents, bank_mode=self.mode,
         )
+        return BankPayment(**fields, detail=detail) if detail is not None else Payment(**fields)
 
     def _save_transfer(self, record: BankTransfer):
         if self._store is not None:
@@ -133,11 +135,13 @@ class LiveBankAdapter(_BankOperations):
 
     def __init__(self, *, key: SecretStr, base_url: str | None = None, store=None,
                  transport: httpx.AsyncBaseTransport | None = None,
-                 url: str = "", key_name="NESSIE_API_KEY", auth="nessie"):
+                 url: str = "", key_name="NESSIE_API_KEY", auth="nessie",
+                 payment_method: Literal["native_transfer", "paired_withdrawal_deposit"] = "native_transfer"):
         super().__init__(store)
         self._key = key
         self._base_url = (base_url if base_url is not None else url.removesuffix("/customers")).rstrip("/")
         self._transport = transport
+        self.payment_method = payment_method
 
     async def _request(self, method, path, *, payload=None, empty_collection_account_id=None):
         if not self._key.get_secret_value():
@@ -194,7 +198,8 @@ class LiveBankAdapter(_BankOperations):
             await self.list_customers()
         except BankError as error:
             return ServiceHealth(status="error", mode=self.mode, detail=str(error))
-        return ServiceHealth(status="ok", mode=self.mode, detail="Read-only bank health probe succeeded.")
+        return ServiceHealth(status="ok", mode=self.mode,
+                             detail=f"Read-only bank health probe succeeded; payment method: {self.payment_method}.")
 
     @staticmethod
     def _objects(body):
@@ -253,6 +258,20 @@ class LiveBankAdapter(_BankOperations):
             raise BankError("Nessie returned an incomplete transfer record.") from None
 
     async def list_transfers(self, account_id):
+        if self.payment_method == "paired_withdrawal_deposit":
+            from app.adapters.paired_payments import refresh_paired_payments
+
+            if self._store is None:
+                raise BankError("Paired payments require persistent attempt storage.")
+            records = []
+            for raw in await refresh_paired_payments(self, account_id):
+                record = BankTransfer.model_validate({field: raw[field] for field in BankTransfer.model_fields})
+                self._save_transfer(record)
+                self._store.save_record("transfers", record.transfer_id, {
+                    **self._store.get_record("transfers", record.transfer_id), "detail": raw["detail"],
+                })
+                records.append(record)
+            return records
         rows = self._objects(await self._request("GET", f"/accounts/{account_id}/transfers",
                                                 empty_collection_account_id=account_id))
         records = [self._normalize(row) for row in rows]
@@ -265,6 +284,16 @@ class LiveBankAdapter(_BankOperations):
         source, destination = _ids(from_id, to_id, from_account_id, to_account_id)
         if type(amount_cents) is not int or amount_cents <= 0:
             raise ValueError("amount_cents must be a positive integer")
+        if self.payment_method == "paired_withdrawal_deposit":
+            from app.adapters.paired_payments import execute_paired_payment
+
+            raw = await execute_paired_payment(self, source, destination, amount_cents, description)
+            record = BankTransfer.model_validate({field: raw[field] for field in BankTransfer.model_fields})
+            self._save_transfer(record)
+            self._store.save_record("transfers", record.transfer_id, {
+                **self._store.get_record("transfers", record.transfer_id), "detail": raw["detail"],
+            })
+            return self._payment(record, detail=raw["detail"])
         timestamp = datetime.now(timezone.utc)
         body = self._created(await self._request("POST", f"/accounts/{source}/transfers", payload={
             "medium": "balance", "payee_id": destination, "amount": float(Decimal(amount_cents) / 100),

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import date
 from io import BytesIO
 from pathlib import Path
-import re
 from threading import Lock
 
 import pdfplumber
@@ -24,29 +23,6 @@ from app.world.attacks import InvoiceAttack
 _FONT_LOCK = Lock()
 _FONT_NAME = "CountersignInvoice"
 _FONT_BOLD = "CountersignInvoiceBold"
-
-
-class _UnicodeInvoiceFont(TTFont):
-    """Keep non-BMP characters correct in ReportLab 4.4's ToUnicode maps.
-
-    ReportLab formats a Unicode codepoint as hex directly; PDF requires UTF-16BE
-    surrogate pairs for characters above U+FFFF. Repair only this font's newly
-    created CMaps, without modifying any ReportLab globals.
-    """
-
-    def addObjects(self, doc) -> None:
-        existing_objects = set(doc.idToObject)
-        super().addObjects(doc)
-        for name in set(doc.idToObject) - existing_objects:
-            if name.startswith("toUnicodeCMap:"):
-                stream = doc.idToObject[name]
-                stream.content = re.sub(
-                    r"(<[0-9A-F]{2}>) <([0-9A-F]{5,6})>",
-                    lambda match: (
-                        f"{match[1]} <{chr(int(match[2], 16)).encode('utf-16-be').hex().upper()}>"
-                    ),
-                    stream.content,
-                )
 
 
 @dataclass(frozen=True)
@@ -101,8 +77,8 @@ def _register_fonts() -> None:
     with _FONT_LOCK:
         if _FONT_NAME not in pdfmetrics.getRegisteredFontNames():
             font_dir = Path(reportlab.__file__).parent / "fonts"
-            pdfmetrics.registerFont(_UnicodeInvoiceFont(_FONT_NAME, str(font_dir / "Vera.ttf")))
-            pdfmetrics.registerFont(_UnicodeInvoiceFont(_FONT_BOLD, str(font_dir / "VeraBd.ttf")))
+            pdfmetrics.registerFont(TTFont(_FONT_NAME, str(font_dir / "Vera.ttf")))
+            pdfmetrics.registerFont(TTFont(_FONT_BOLD, str(font_dir / "VeraBd.ttf")))
 
 
 def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
@@ -130,20 +106,27 @@ def _money(amount_cents: int) -> str:
     return f"${amount_cents // 100:,}.{amount_cents % 100:02d}"
 
 
-def _prepare_glyphs(texts: list[str]) -> None:
-    codepoints = {ord(char) for text in texts for char in text if char not in "\r\n"}
+def _validate_glyphs(texts: list[str], *, allow_line_breaks: bool = False) -> None:
+    """Reject missing glyphs before creating any PDF, without altering fonts.
+
+    The packaged Vera faces cover all built-in invoice and attack text, including
+    Latin accents. Custom content must use real glyphs in both faces; assigning
+    an unsupported codepoint to .notdef would preserve extraction but draw a box.
+    """
+    codepoints = {
+        ord(char) for text in texts for char in text
+        if not (allow_line_breaks and char in "\r\n")
+    }
     if any(0xD800 <= code <= 0xDFFF for code in codepoints):
         raise ValueError("Invoice text contains an invalid unpaired Unicode surrogate")
     with _FONT_LOCK:
-        for font_name in (_FONT_NAME, _FONT_BOLD):
-            face = pdfmetrics.getFont(font_name).face
-            for code in codepoints:
-                if code not in face.charToGlyph:
-                    # A visible missing-glyph box is honest about limited font
-                    # coverage. Giving each codepoint its own subset slot keeps
-                    # its exact original text in the PDF's ToUnicode mapping.
-                    face.charToGlyph[code] = 0
-                    face.charWidths[code] = face.defaultWidth
+        faces = [pdfmetrics.getFont(name).face for name in (_FONT_NAME, _FONT_BOLD)]
+        unsupported = sorted(
+            code for code in codepoints if any(not face.charToGlyph.get(code) for face in faces)
+        )
+    if unsupported:
+        characters = ", ".join(f"U+{code:04X}" for code in unsupported)
+        raise ValueError(f"Invoice font does not support these characters: {characters}")
 
 
 def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> bytes:
@@ -153,12 +136,15 @@ def generate_invoice(spec: InvoiceSpec, attack: InvoiceAttack | None = None) -> 
     region. The content remains in the PDF text stream for extraction.
     """
     _register_fonts()
-    _prepare_glyphs([
+    _validate_glyphs([
         spec.invoice_number, spec.vendor_name, spec.vendor_email,
         spec.remit_account_number, spec.po_number, spec.company_name,
-        spec.service_description, *(item.description for item in spec.line_items),
-        *([attack.text] if attack else []),
+        spec.service_description,
     ])
+    _validate_glyphs([
+        *(item.description for item in spec.line_items),
+        *([attack.text] if attack else []),
+    ], allow_line_breaks=True)
     output = BytesIO()
     pdf = canvas.Canvas(output, pagesize=letter, pageCompression=1)
     pdf.setTitle(f"Invoice {spec.invoice_number}")
