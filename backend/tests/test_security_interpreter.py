@@ -148,8 +148,8 @@ def test_interpreter_propagates_amount_vendor_po_and_control_sources(table, worl
     assert execution.outputs["D1_due"].value is True
     assert execution.outputs["D1_po"].sources <= intent.sources
     assert execution.outputs["D1_due"].sources <= intent.sources
-    assert execution.outcomes == {"invoice-1": ["POLICY_NOT_IMPLEMENTED"]}
-    assert execution.outputs["D1_pay"].value.outcome == "HOLD"
+    assert execution.outcomes == {}
+    assert execution.outputs["D1_pay"].value is intent
     # There is no bank constructor, transfer method, or bank argument available.
     assert not hasattr(Interpreter, "transfer")
 
@@ -177,7 +177,7 @@ def test_false_and_missing_checks_retain_provenance_on_the_payment_intent(table,
     assert table.values["$D1.due_date"].sources <= intent.sources
     assert execution.outputs["D1_po"].sources <= intent.sources
     assert execution.outputs["D1_due"].sources <= intent.sources
-    assert execution.outcomes == {"invoice-1": ["POLICY_NOT_IMPLEMENTED"]}
+    assert execution.outcomes == {}
 
 
 @pytest.mark.parametrize("mutation", [
@@ -228,10 +228,10 @@ def test_program_validation_rejects_invalid_programs(table, world, mutation):
     assert "CS-CANARY" not in str(failure.value)
 
 
-def test_entire_program_is_validated_before_any_policy_evaluation(table, world, monkeypatch):
+def test_entire_program_is_validated_before_any_operation(table, world, monkeypatch):
     vendors, orders = world
     calls = []
-    monkeypatch.setattr("app.security.interpreter.evaluate_payment_intent", lambda intent: calls.append(intent))
+    monkeypatch.setattr(Interpreter, "resolve_vendor", lambda self, name: calls.append(name))
     steps = program() + [{"id": "bad", "invoice_id": "D1", "op": "skip", "args": {}}]
     with pytest.raises(PlanValidationError):
         Interpreter(table, vendors, orders).execute(steps)

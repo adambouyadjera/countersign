@@ -161,17 +161,6 @@ class PaymentIntent:
         return sources_of(self.invoice, self.vendor, self.amount, self.to_account, self.memo, *self.prerequisites)
 
 
-@dataclass(frozen=True)
-class PolicyResult:
-    outcome: str = "HOLD"
-    reason_codes: tuple[str, ...] = ("POLICY_NOT_IMPLEMENTED",)
-
-
-def evaluate_payment_intent(intent: PaymentIntent) -> PolicyResult:
-    """B6 boundary: an intent is never authorization or a bank operation."""
-    return PolicyResult()
-
-
 @dataclass
 class ExecutionResult:
     intents: list[PaymentIntent] = field(default_factory=list)
@@ -272,9 +261,9 @@ class Interpreter:
                     memo=resolve(args["memo"]), prerequisites=tuple(dependencies[alias]),
                 )
                 result.intents.append(intent)
-                policy = evaluate_payment_intent(intent)
-                result.outcomes[invoice_id] = list(policy.reason_codes)
-                output = Labeled(policy, intent.sources)
+                # An interpreted pay operation is only a request. The runner
+                # must pass this labeled intent through the deterministic gate.
+                output = Labeled(intent, intent.sources)
             else:
                 reason = resolve(args["reason"])
                 result.outcomes[invoice_id] = [reason.value]

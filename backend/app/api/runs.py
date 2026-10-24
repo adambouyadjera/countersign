@@ -4,7 +4,8 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from app.contract_models import ErrorResponse, PlannerTranscript, PolicyDecision, Run, RunRequest
+from app.contract_models import Batch, ErrorResponse, PlannerTranscript, PolicyDecision, ProvenanceGraph, Run, RunRequest
+from app.security.graph import overlay_resolution
 
 
 router = APIRouter()
@@ -43,6 +44,26 @@ async def get_planner_transcript(run_id: str, request: Request) -> PlannerTransc
         "run_id": run_id, "calls": [],
         "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
     })
+
+
+@router.get("/runs/{run_id}/invoices/{invoice_id}/graph", response_model=ProvenanceGraph,
+            operation_id="get_invoice_graph", responses={404: {"model": ErrorResponse}})
+async def get_invoice_graph(run_id: str, invoice_id: str, request: Request) -> ProvenanceGraph:
+    store = request.app.state.store
+    run = store.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    batch_record = store.get_record("batches", run.batch_id)
+    batch = Batch.model_validate(batch_record) if batch_record is not None else None
+    if batch is None or invoice_id not in {invoice.invoice_id for invoice in batch.invoices}:
+        raise HTTPException(404, "Invoice does not belong to this run")
+    record = store.get_record("graphs", f"{run_id}:{invoice_id}")
+    if record is None:
+        raise HTTPException(404, "Provenance graph is not available")
+    graph = ProvenanceGraph.model_validate({key: value for key, value in record.items() if key != "graph_id"})
+    if graph.run_id != run_id or graph.invoice_id != invoice_id:
+        raise HTTPException(404, "Provenance graph is not available")
+    return overlay_resolution(graph, store.list_events(run_id), store.list_records("approvals", run_id=run_id))
 
 
 @router.get(

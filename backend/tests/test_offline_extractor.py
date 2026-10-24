@@ -30,7 +30,8 @@ def test_all_five_standard_invoices_extract_every_scalar_and_line_item():
             vendor = store.get_record("vendors", invoice.vendor_id)
             po = store.get_record("purchase_orders", vendor["purchase_order_ids"][0])
             assert raw.vendor_email.value == vendor["email"]
-            assert raw.remit_account_number.value == vendor["remit_account_number"]
+            expected_account = "999900009999" if index == 3 else vendor["remit_account_number"]
+            assert raw.remit_account_number.value == expected_account
             assert raw.po_number.value == po["po_number"]
             assert raw.amount_due_cents.value == po["amount_cents"]
             assert raw.invoice_date.value == batch.created_at.date().isoformat()

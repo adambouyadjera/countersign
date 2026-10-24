@@ -144,8 +144,9 @@ async def test_planner_never_sees_untrusted_text(tmp_path, monkeypatch, template
         application.state.store.save_record("vendors", "VEN-003", vendor)
         final, transcript = await start_run(application, batch)
         assert final.lanes[0].status == "completed"
-        assert final.tallies.countersign.held_count == 5
-        bank.transfer.assert_not_awaited()
+        assert final.tallies.countersign.not_on_file_count == 0
+        assert final.tallies.countersign.paid_count + final.tallies.countersign.held_count == 5
+        assert all(call.kwargs["to_account_id"] != next(row["account_id"] for row in application.state.store.list_records("bank_directory") if row["role"] == "attacker") for call in bank.transfer.await_args_list)
         assert len(fake.requests) == len(transcript.calls) == 2
         assert transcript.leak_guard.matches == 0
         assert transcript.leak_guard.strings_checked >= len(set(line for line in lines if len(line) >= 12)) * 2

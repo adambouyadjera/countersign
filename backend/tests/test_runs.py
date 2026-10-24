@@ -1,4 +1,4 @@
-"""Countersign execution over opaque handles; policy holds until B6."""
+"""Only deterministic policy authorization can execute a Countersign payment."""
 
 import asyncio
 import json
@@ -35,7 +35,7 @@ async def request_run(app, batch, lanes=None, **extra):
 
 
 @pytest.mark.asyncio
-async def test_standard_run_valid_plan_and_five_policy_holds_without_bank_access(application):
+async def test_standard_run_four_allows_one_account_mismatch_hold(application):
     async with application.router.lifespan_context(application):
         store = application.state.store
         batch = create_standard_batch(store)
@@ -56,29 +56,31 @@ async def test_standard_run_valid_plan_and_five_policy_holds_without_bank_access
         assert {lane.lane: lane.status for lane in initial.lanes} == {"countersign": "running", "unguarded": "not_implemented"}
         assert {lane.lane: lane.status for lane in final.lanes} == {"countersign": "completed", "unguarded": "not_implemented"}
         tally = final.tallies.countersign
-        assert (tally.paid_count, tally.held_count, tally.blocked_count) == (0, 5, 0)
-        assert tally.paid_cents == 0
-        assert bank.transfer.await_count == 0
+        assert (tally.paid_count, tally.held_count, tally.blocked_count) == (4, 1, 0)
+        assert tally.paid_cents == 270000
+        assert bank.transfer.await_count == 4
         events = store.list_events(final.run_id)
         assert [event.seq for event in events] == list(range(1, len(events) + 1))
         assert events[0].type == "run.started" and events[-1].type == "run.completed"
         assert sum(event.type == "document.loaded" for event in events) == 5
         assert sum(event.type == "fields.extracted" for event in events) == 5
-        assert sum(event.type == "payment.executed" for event in events) == 0
+        assert sum(event.type == "payment.executed" for event in events) == 4
         assert sum(event.type == "plan.proposed" for event in events) == 1
         proposed = next(event.payload for event in events if event.type == "plan.proposed")
         assert {step.invoice_id for step in proposed.steps} == {invoice.invoice_id for invoice in batch.invoices}
         held = [event for event in events if event.type == "payment.held"]
-        assert len(held) == 5
-        assert all(event.payload.reason_codes == ["POLICY_NOT_IMPLEMENTED"] for event in held)
+        assert len(held) == 1
+        assert held[0].payload.reason_codes == ["BANK_DETAILS_MISMATCH"]
+        assert held[0].payload.invoice_id == batch.invoices[2].invoice_id
         assert any(event.type == "lane.status" and event.lane == "unguarded" and event.payload.status == "not_implemented" for event in events)
         for event in events:
             assert event.mode == "offline"
             TypeAdapter(RunEvent).validate_json(event.model_dump_json())
         decisions = store.list_records("decisions", run_id=final.run_id)
         approvals = store.list_records("approvals", run_id=final.run_id)
-        assert len(decisions) == 5 and len(approvals) == 5
-        assert all(record["outcome"] == "HOLD" for record in decisions)
+        assert len(decisions) == 5 and len(approvals) == 1
+        assert sum(record["outcome"] == "ALLOW" for record in decisions) == 4
+        assert sum(record["outcome"] == "HOLD" for record in decisions) == 1
         assert len(store.list_records("extractions")) == 5
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://test") as client:
             assert len((await client.get(f"/api/runs/{final.run_id}/decisions")).json()) == 5
@@ -112,11 +114,13 @@ async def test_unverified_or_ungrounded_payment_field_never_reaches_bank(applica
 
         extractor.extract = altered
         _, final = await request_run(application, batch)
-        assert bank.transfer.await_count == 0
-        assert final.tallies.countersign.held_count == 5
+        assert bank.transfer.await_count == 3
+        assert final.tallies.countersign.held_count == 2
         held = [event for event in application.state.store.list_events(final.run_id) if event.type == "payment.held"]
         bad = next(event for event in held if event.payload.invoice_id == batch.invoices[0].invoice_id)
         assert "UNVERIFIED_SOURCE" in bad.payload.reason_codes
+        bad_decision = next(row for row in application.state.store.list_records("decisions", run_id=final.run_id) if row["invoice_id"] == batch.invoices[0].invoice_id)
+        assert not next(check for check in bad_decision["checks"] if check["code"] == "SPAN_VERIFIED")["passed"]
         error = next(event for event in application.state.store.list_events(final.run_id)
                      if event.type == "error" and event.payload.invoice_id == batch.invoices[0].invoice_id)
         assert error.payload.message == "payment source verification failed (span_verification)"
@@ -128,7 +132,7 @@ async def test_unguarded_only_request_still_starts_countersign(application):
         batch = create_standard_batch(application.state.store)
         _, final = await request_run(application, batch, lanes=["unguarded"])
         assert {lane.lane: lane.status for lane in final.lanes} == {"countersign": "completed", "unguarded": "not_implemented"}
-        assert final.tallies.countersign.paid_count == 0
+        assert final.tallies.countersign.paid_count == 4
 
 
 @pytest.mark.asyncio
@@ -144,17 +148,18 @@ async def test_custom_instruction_is_held_instead_of_silently_ignored(applicatio
 
 
 @pytest.mark.asyncio
-async def test_planner_interpreter_path_cannot_call_the_bank(application):
+async def test_bank_failure_holds_without_fabricated_success(application):
     async with application.router.lifespan_context(application):
         batch = create_standard_batch(application.state.store)
         bank = application.state.adapters.bank
-        bank.transfer = AsyncMock(side_effect=BankError("A payment intent cannot move money"))
+        bank.transfer = AsyncMock(side_effect=BankError("private-bank-response-must-not-escape"))
         _, final = await request_run(application, batch)
-        bank.transfer.assert_not_awaited()
-        assert final.lanes[0].status == "completed"
+        assert bank.transfer.await_count == 4
+        assert final.lanes[0].status == "failed"
         assert final.tallies.countersign.held_count == 5
         events = application.state.store.list_events(final.run_id)
-        assert not any(event.type in {"payment.executed", "error"} for event in events)
+        assert not any(event.type == "payment.executed" for event in events)
+        assert "private-bank-response" not in json.dumps([event.model_dump(mode="json") for event in events])
         assert events[-1].type == "run.completed"
 
 
@@ -207,10 +212,10 @@ async def test_failed_extraction_emits_stage_error_and_persisted_hold_then_conti
         assert held.payload.reason_codes == ["UNVERIFIED_SOURCE"]
         assert original_approval(application, held.payload.approval_id)["invoice_id"] == failed_invoice
         assert not any(event.type == "payment.executed" for event in failure_events)
-        assert bank.transfer.await_count == 0
+        assert bank.transfer.await_count == 3
         assert final.lanes[0].status == "failed"
         assert (final.tallies.countersign.paid_count, final.tallies.countersign.held_count,
-                final.tallies.countersign.blocked_count) == (0, 5, 0)
+                final.tallies.countersign.blocked_count) == (3, 2, 0)
         assert events[-1].type == "run.completed"
         serialized = json.dumps([event.model_dump(mode="json") for event in events])
         assert "secret-should-not-leak" not in serialized
