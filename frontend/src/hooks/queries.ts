@@ -7,10 +7,13 @@ import {
   getInvoiceGraph,
   getPlannerTranscript,
   getRun,
+  getReconciliation,
   getRunDecisions,
+  getTrialBalance,
   getVendor,
   listApprovals,
   listInboxItems,
+  listJournalEntries,
   listPeople,
 } from '@/api/client'
 
@@ -103,4 +106,16 @@ export function usePendingApprovals() {
 /** GET /api/inbox, polled every 2 s while waiting for autopilot to pick up an attack. */
 export function useInbox(enabled: boolean) {
   return useQuery({ queryKey: ['inbox'], queryFn: listInboxItems, enabled, refetchInterval: enabled ? 2_000 : false, retry: false })
+}
+
+export function useTrialBalance() {
+  return useQuery({ queryKey: ['ledger', 'trial_balance'], queryFn: getTrialBalance, retry: false })
+}
+
+export function useReconciliation() {
+  return useQuery({ queryKey: ['ledger', 'reconciliation'], queryFn: getReconciliation, retry: false })
+}
+
+export function useJournal() {
+  return useQuery({ queryKey: ['ledger', 'entries'], queryFn: () => listJournalEntries(), retry: false })
 }

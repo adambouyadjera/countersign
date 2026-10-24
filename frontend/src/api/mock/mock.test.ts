@@ -93,3 +93,15 @@ describe('mock GET /api/approvals', () => {
     expect((route('GET', '/api/approvals', undefined).body as unknown[]).length).toBe(1)
   })
 })
+
+describe('mock /api/autopilot', () => {
+  it('remembers what POST set, and rejects a non-boolean', async () => {
+    const { resetMockState } = await import('./index')
+    resetMockState()
+    expect((route('GET', '/api/autopilot', undefined).body as { enabled: boolean }).enabled).toBe(false)
+    expect((route('POST', '/api/autopilot', { enabled: true }).body as { enabled: boolean }).enabled).toBe(true)
+    expect((route('GET', '/api/autopilot', undefined).body as { enabled: boolean }).enabled).toBe(true)
+    expect(route('POST', '/api/autopilot', { enabled: 'yes' }).status).toBe(422)
+    resetMockState()
+  })
+})

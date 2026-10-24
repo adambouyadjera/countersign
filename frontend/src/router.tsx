@@ -3,12 +3,10 @@ import { AppShell } from '@/components/shell/AppShell'
 import { CaseFilePage } from '@/routes/CaseFilePage'
 import { ConsolePage } from '@/routes/ConsolePage'
 import { AttackLabPage } from '@/routes/AttackLabPage'
-import {
-  AuditPage,
-  BooksPage,
-  NotFoundPage,
-  ProofPage,
-} from '@/routes/placeholders'
+import { AuditPage } from '@/routes/AuditPage'
+import { BooksPage } from '@/routes/BooksPage'
+import { NotFoundPage } from '@/routes/placeholders'
+import { ProofPage } from '@/routes/ProofPage'
 
 export const router = createBrowserRouter([
   {

@@ -47,7 +47,8 @@ const NAV = [
 ] as const
 
 export function AppShell() {
-  const onCase = useLocation().pathname.startsWith('/runs/')
+  const { pathname } = useLocation()
+  const onCase = pathname.startsWith('/runs/')
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-line px-7 py-3.5">
@@ -66,7 +67,7 @@ export function AppShell() {
           ))}
         </nav>
         {/* The case file mockup's header has no autopilot status; it shows who you act as. */}
-        {!onCase && <AutopilotStatus />}
+        {!onCase && <AutopilotStatus interactive={pathname === '/'} />}
         <QueueDrawer />
         <MockBadge />
         {onCase && <ActingAs className="ml-auto" />}
