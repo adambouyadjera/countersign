@@ -63,7 +63,7 @@ def build_adapters(
         if settings.nessie_mode == "offline" else
         LiveBankAdapter(
             key=settings.nessie_api_key, base_url=settings.nessie_base_url,
-            store=store, transport=transport,
+            store=store, transport=transport, payment_method=settings.nessie_payment_method,
         )
     )
     audit: AuditSink = (

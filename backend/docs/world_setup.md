@@ -43,6 +43,17 @@ remote records are manually deleted, reconcile the saved IDs before seeding agai
 See [nessie_notes.md](nessie_notes.md) for request fields, dollar conversion,
 settlement behavior, and live verification findings.
 
+Live payments explicitly default to
+`NESSIE_PAYMENT_METHOD=paired_withdrawal_deposit`, because the deployed native
+transfer schema rejects recipient routing. The adapter creates one real Nessie
+withdrawal and one real deposit, returning both IDs and statuses in backend
+`BankPayment.detail`. The pair is non-atomic and currently supports whole-dollar
+amounts. Partial or ambiguous attempts stop for reconciliation; an identical
+successful request reads back its existing IDs instead of submitting again.
+Use a unique invoice/payment description for a distinct payment. Native SDK
+requests remain available via `NESSIE_PAYMENT_METHOD=native_transfer` for a
+compatible service; there is no automatic retry using another method.
+
 ## Explicit offline mode
 
 ```sh
@@ -84,9 +95,11 @@ private table. A batch generated later does not replace earlier documents.
 `app/world/attacks.py` exposes all six attack templates for later Attack Lab
 integration. Custom payloads accept up to 600 characters and substitute
 `{{ATTACKER_ACCOUNT}}`; whitespace is normalized to fit a one-page invoice.
-Unicode survives extraction, including emoji and CJK. Characters missing from
-the embedded font display as boxes. Hidden payloads use white 1-point drawing
-color; their text remains in the extracted document.
+The embedded Vera TrueType fonts cover all built-in invoice and attack text,
+including Latin accents. Text using unsupported characters (such as emoji or
+CJK) is rejected with a `ValueError` listing their Unicode codepoints before a
+PDF is generated; missing-glyph boxes are never substituted. Hidden payloads
+use white 1-point drawing color; their text remains in the extracted document.
 
 To advance the session clock and clear run execution state:
 
@@ -107,5 +120,16 @@ pytest -q -m live
 ```
 
 The live test uses configured credentials, seeds real demo accounts, submits a
-USD 1.00 transfer, and reads its real transfer ID back. An absent key skips that
-test; a configured key with a failing service must fail rather than switch modes.
+USD 1.00 paired payment, and reads back both real resource IDs and statuses.
+The observed response was pending for both legs, with unchanged bank balances.
+It does not claim settlement. An absent key skips the test; a configured key
+with a failing service fails instead of switching modes. Full masked request
+and response pairs are saved in `docs/nessie_live_transcript.jsonl`.
+
+To reproduce the three requested transfer-schema attempts (which create an
+unrouted diagnostic record when the reduced body is accepted):
+
+```sh
+python scripts/diagnose_nessie.py
+python scripts/diagnose_nessie.py --docs-probe
+```

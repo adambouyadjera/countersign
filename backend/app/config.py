@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     nessie_api_key: SecretStr = SecretStr("")
     nessie_base_url: str = "https://prod-api.nessieisreal.com"
     nessie_mode: Literal["live", "offline"] = "live"
+    nessie_payment_method: Literal["native_transfer", "paired_withdrawal_deposit"] = "paired_withdrawal_deposit"
     elastic_url: str = ""
     elastic_api_key: SecretStr = SecretStr("")
     kibana_url: str = ""

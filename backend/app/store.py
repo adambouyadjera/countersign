@@ -23,6 +23,7 @@ _RECORD_TABLES = {
     "purchase_orders": "purchase_order_id",
     "bank_directory": "display_number",
     "bank_seeds": "seed_id",
+    "bank_payment_attempts": "attempt_id",
     "invoice_scoring": "invoice_id",
     "documents": "document_id",
     "batches": "batch_id",
@@ -150,6 +151,20 @@ class Store:
                 f"SELECT data FROM {table} WHERE {_RECORD_TABLES[table]} = ?", (record_id,)
             ).fetchone()
             return json.loads(row["data"]) if row else None
+
+    def claim_bank_payment_attempt(self, attempt: Mapping[str, Any]) -> bool:
+        """Claim a logical payment atomically before any irreversible bank POST.
+
+        SQLite's unique key protects against separate adapters and processes;
+        an in-memory asyncio lock alone cannot prevent duplicate withdrawals.
+        """
+        encoded = json.dumps(dict(attempt), separators=(",", ":"), allow_nan=False)
+        with self._lock:
+            cursor = self._db().execute(
+                "INSERT OR IGNORE INTO bank_payment_attempts (attempt_id, data) VALUES (?, ?)",
+                (attempt["attempt_id"], encoded),
+            )
+            return cursor.rowcount == 1
 
     def list_records(self, table: str, *, run_id: str | None = None) -> list[dict[str, Any]]:
         if table not in _RECORD_TABLES:
