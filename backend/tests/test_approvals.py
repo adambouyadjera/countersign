@@ -67,7 +67,7 @@ async def test_pay_vendor_on_file_resolves_into_original_completed_run_stream(ap
     events = app.state.store.list_events("run-held")
     assert [event.seq for event in events] == list(range(1, len(events) + 1))
     assert events[1].type == "run.completed"
-    assert {event.type for event in events[2:]} == {"approval.resolved", "payment.executed"}
+    assert {event.type for event in events[2:]} == {"approval.resolved", "payment.executed", "ledger.posted"}
     assert all(event.lane == "countersign" and event.mode == "offline" for event in events[2:])
     run = app.state.store.get_run("run-held")
     assert run.tallies.countersign.paid_count == 1 and run.tallies.countersign.held_count == 0
@@ -87,12 +87,20 @@ async def test_approve_new_account_requires_correct_last4_without_consuming_inva
         assert response.status_code == 422
         assert app.state.store.get_record("approval_attempts", "approval-held") is None
     app.state.adapters.bank.transfer.assert_not_awaited()
+    unverified = await client.post("/api/approvals/approval-held", json=body("approve_new_account", confirm_last4="9999"))
+    assert unverified.status_code == 403
+    assert app.state.store.get_record("approval_attempts", "approval-held") is None
+    verified = await client.post("/api/vendors/VEN-003/bank_change", json={
+        "actor_id": "person-vendor-admin", "new_account_display": "999900009999",
+        "evidence_note": "Verified independently with the vendor by phone.",
+    })
+    assert verified.status_code == 200, verified.text
     correct = await client.post("/api/approvals/approval-held", json=body("approve_new_account", confirm_last4="9999"))
     assert correct.status_code == 200, correct.text
     payment = app.state.store.get_record("transfers", correct.json()["resolution"]["transfer_id"])
-    assert payment["to_display_number"] == "999900009999" and not payment["payee_on_file"]
-    assert app.state.store.get_record("vendors", "VEN-003")["account_on_file_display"] == "300300003333"
-    assert app.state.store.get_run("run-held").tallies.countersign.not_on_file_count == 1
+    assert payment["to_display_number"] == "999900009999" and payment["payee_on_file"]
+    assert app.state.store.get_record("vendors", "VEN-003")["account_on_file_display"] == "999900009999"
+    assert app.state.store.get_run("run-held").tallies.countersign.not_on_file_count == 0
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,97 @@
+{
+  "recorded": true,
+  "run_id": "run-729325d8a1304ead952b510c6c3cefc0",
+  "source_file": "docs/finance_live_run-729325d8a1304ead952b510c6c3cefc0.json",
+  "source_sha256": "c60560e36bcac637369de42c4d616aaf75fdb588ce9f30be36a0381566b2eb07",
+  "trial_balance": {
+    "as_of": "2026-10-24T21:53:24.960177Z",
+    "balanced": true,
+    "accounts": [
+      {
+        "account_code": "1000",
+        "account_name": "Cash - Operating",
+        "debit_cents": 0,
+        "credit_cents": 270000,
+        "balance_cents": -270000
+      },
+      {
+        "account_code": "2000",
+        "account_name": "Accounts Payable",
+        "debit_cents": 270000,
+        "credit_cents": 270000,
+        "balance_cents": 0
+      },
+      {
+        "account_code": "5100",
+        "account_name": "Production Costs",
+        "debit_cents": 210000,
+        "credit_cents": 0,
+        "balance_cents": 210000
+      },
+      {
+        "account_code": "5200",
+        "account_name": "Security and Staffing",
+        "debit_cents": 42000,
+        "credit_cents": 0,
+        "balance_cents": 42000
+      },
+      {
+        "account_code": "5300",
+        "account_name": "Artist Fees",
+        "debit_cents": 18000,
+        "credit_cents": 0,
+        "balance_cents": 18000
+      },
+      {
+        "account_code": "5400",
+        "account_name": "Facilities",
+        "debit_cents": 0,
+        "credit_cents": 0,
+        "balance_cents": 0
+      }
+    ]
+  },
+  "reconciliation": {
+    "as_of": "2026-10-24T21:53:26.446049Z",
+    "bank_balance_change_cents": -270000,
+    "ledger_cash_change_cents": -270000,
+    "difference_cents": 0,
+    "items": [
+      {
+        "transfer_id": "c8c0b543-5564-4345-a8c1-f81a98d8c2db",
+        "journal_entry_id": "journal-f79c6bd79e6a5b46b3fe8a1b84babc95",
+        "amount_cents": 42000,
+        "status": "matched",
+        "note": "Bank status: pending. Submitted-payment register basis includes pending items; this is not settled bank balance."
+      },
+      {
+        "transfer_id": "d1792e89-e826-40d6-933a-8ec662682fa2",
+        "journal_entry_id": "journal-7c4e391bae563c2019b52688f1116170",
+        "amount_cents": 85000,
+        "status": "matched",
+        "note": "Bank status: pending. Submitted-payment register basis includes pending items; this is not settled bank balance."
+      },
+      {
+        "transfer_id": "dac334df-ed20-466d-b3a2-7fb4617086ed",
+        "journal_entry_id": "journal-f0d2e77c2ba6ff9e9c131cf79126f404",
+        "amount_cents": 125000,
+        "status": "matched",
+        "note": "Bank status: pending. Submitted-payment register basis includes pending items; this is not settled bank balance."
+      },
+      {
+        "transfer_id": "ef99cdf4-b1c3-40df-a73d-698c862ab599",
+        "journal_entry_id": "journal-6076023f170b23cdfd6376bb31631611",
+        "amount_cents": 18000,
+        "status": "matched",
+        "note": "Bank status: pending. Submitted-payment register basis includes pending items; this is not settled bank balance."
+      }
+    ]
+  },
+  "bank_balance_observation": {
+    "basis": "submitted_payment_register_including_pending",
+    "account_id": "5def94a8-e80a-451e-94d1-602a6d073c07",
+    "captured_bank_balance_cents": 25000000,
+    "current_bank_balance_cents": 25000000,
+    "observed_balance_change_cents": 0
+  }
+}

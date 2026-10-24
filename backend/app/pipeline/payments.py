@@ -94,7 +94,7 @@ class PaymentExecutor:
 
     async def execute(self, *, run_id, invoice_id, invoice_number, vendor_id,
                       amount_cents, to_display_number, via, effective_mode=None,
-                      require_on_file=None) -> Payment:
+                      require_on_file=None, created_by="person-ap-agent", approval_id=None) -> Payment:
         """Return and emit only the bank's validated result; no service fallback.
 
         A failure after reservation is conservatively uncertain. That invoice
@@ -108,9 +108,30 @@ class PaymentExecutor:
             source, target = self.prepare(vendor_id=vendor_id, amount_cents=amount_cents,
                                           to_display_number=to_display_number,
                                           require_on_file=require_on_file)
+            await self.bus.before_payment()
             attempt = f"Countersign {via} {run_id} {invoice_id}"
-            if not self.store.claim_session_payment(invoice_number, attempt):
-                raise DuplicatePaymentError("Invoice already paid or reserved in this session")
+
+            def authorize():
+                # This runs inside the bill/event SQLite transaction, after all
+                # pre-transfer awaits. Bind the exact current master, actor and
+                # directory rather than trusting a stale earlier policy read.
+                if approval_id is not None:
+                    callback = getattr(self, "authorize_approval", None)
+                    if callback is None:
+                        raise BankError("Approval authority is unavailable for this payment.")
+                    callback(approval_id=approval_id, created_by=created_by, vendor_id=vendor_id,
+                             to_display_number=to_display_number, amount_cents=amount_cents)
+                current_source, current_target = self.prepare(vendor_id=vendor_id, amount_cents=amount_cents,
+                    to_display_number=to_display_number, require_on_file=require_on_file)
+                if current_source["account_id"] != source["account_id"] or current_target["account_id"] != target["account_id"]:
+                    raise BankError("Payment directory changed before submission; review is required.")
+                if not self.store.claim_session_payment(invoice_number, attempt):
+                    raise DuplicatePaymentError("Invoice already paid or reserved in this session")
+
+            await self.bus.accept_bill(run_id=run_id, invoice_id=invoice_id,
+                invoice_number=invoice_number, vendor_id=vendor_id,
+                amount_cents=amount_cents, created_by=created_by, authorize=authorize,
+                mode="offline" if self.bank.mode == "offline" or effective_mode == "offline" else "live")
             try:
                 result = await self.bank.transfer(
                     from_account_id=source["account_id"], to_account_id=target["account_id"],
@@ -132,6 +153,7 @@ class PaymentExecutor:
                     **previous, **raw, "run_id": run_id, "invoice_id": invoice_id,
                     "invoice_number": invoice_number, "vendor_id": vendor_id,
                     "session_started_at": self.store.session_started_at.isoformat(),
+                    "created_by": created_by, "approval_id": approval_id,
                     "via": via, "lane": "countersign", "ts": previous.get("ts", datetime.now(timezone.utc).isoformat()),
                 })
                 self.store.finish_session_payment(invoice_number, state="submitted", transfer_id=payment.transfer_id)

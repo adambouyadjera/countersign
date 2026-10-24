@@ -81,7 +81,8 @@ class RunManager:
         self.adapters = adapters
         self.settings = settings
         self.payments = payment_executor or PaymentExecutor(store, bus, adapters.bank)
-        self.policy = PolicyEngine(store, amount_tolerance_cents=settings.policy_amount_tolerance_cents)
+        self.policy = PolicyEngine(store, amount_tolerance_cents=settings.policy_amount_tolerance_cents,
+                                   autonomy_limit_cents=settings.agent_autonomy_limit_cents)
         self._tasks: dict[str, asyncio.Task] = {}
         self._closed = False
 
@@ -520,7 +521,7 @@ class RunManager:
                 requested_account_display=requested,
                 account_on_file_display=str(vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))),
                 reason_codes=decision.reason_codes, status="pending", created_at=datetime.now(timezone.utc),
-                requested_by="person-ap-agent", required_role="ap_manager",
+                requested_by="person-ap-agent", required_role="controller" if amount > 5_000_000 else "ap_manager",
             )
             self.store.save_record("approvals", approval_id, approval)
             self.store.save_record("approval_contexts", approval_id, {

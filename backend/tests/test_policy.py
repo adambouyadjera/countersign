@@ -66,10 +66,10 @@ def test_all_checks_pass_in_the_contract_order(world):
     decision = evaluate(world)
     assert decision.outcome == "ALLOW" and decision.reason_codes == []
     assert [item.code for item in decision.checks] == [
-        "VENDOR_KNOWN", "SPAN_VERIFIED", "PAYEE_ON_FILE", "AMOUNT_MATCHES_PO", "NOT_DUPLICATE", "INSTRUCTIONS_IN_DOCUMENT",
+        "VENDOR_KNOWN", "SPAN_VERIFIED", "PAYEE_ON_FILE", "AMOUNT_MATCHES_PO", "NOT_DUPLICATE", "INSTRUCTIONS_IN_DOCUMENT", "VENDOR_HISTORY",
     ]
     assert all(item.passed for item in decision.checks)
-    assert all(item.evidence_node_ids for item in decision.checks[:-1])
+    assert all(item.evidence_node_ids for item in decision.checks if item.code != "INSTRUCTIONS_IN_DOCUMENT")
 
 
 @pytest.mark.parametrize("missing", ["unresolved", "missing_record", "missing_record_source"])

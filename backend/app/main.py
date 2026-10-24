@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import approvals, attacks, demo, evidence, health, runs, world
+from app.api import approvals, attacks, demo, evidence, finance, health, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
@@ -24,6 +24,9 @@ from app.pipeline.runner import RunManager
 from app.pipeline.approvals import ApprovalManager
 from app.pipeline.payments import PaymentExecutor
 from app.world.people import seed_people
+from app.books.ledger import Ledger
+from app.books.bookkeeper import Bookkeeper
+from app.books.reconciliation import Reconciler
 
 
 def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> JSONResponse:
@@ -70,8 +73,12 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         store.initialize()
         app.state.settings = configuration
         app.state.store = store
-        app.state.event_bus = EventBus(store)
         app.state.adapters = build_adapters(configuration, store)
+        app.state.ledger = Ledger(store)
+        app.state.ledger.initialize()
+        app.state.reconciler = Reconciler(store, app.state.ledger, app.state.adapters.bank)
+        app.state.bookkeeper = Bookkeeper(store, app.state.ledger, app.state.reconciler)
+        app.state.event_bus = EventBus(store, bookkeeper=app.state.bookkeeper)
         app.state.health_checker = HealthChecker(app.state.adapters)
         app.state.payment_executor = PaymentExecutor(store, app.state.event_bus, app.state.adapters.bank)
         app.state.approval_manager = ApprovalManager(store, app.state.event_bus, app.state.payment_executor)
@@ -79,7 +86,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
                                            app.state.payment_executor)
         try:
             seed_trusted_world(store)
-            seed_people(store)
+            seed_people(store, autonomy_limit_cents=configuration.agent_autonomy_limit_cents)
             if configuration.nessie_mode == "offline":
                 await seed_world(store, app.state.adapters.bank)
             yield
@@ -145,6 +152,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(world.router)
     api.include_router(approvals.router)
     api.include_router(attacks.router)
+    api.include_router(finance.router)
     api.include_router(evidence.router)
     app.include_router(api)
 

@@ -91,6 +91,8 @@ def seed_trusted_world(store: Store) -> dict[str, Any]:
             store.save_record("purchase_orders", po_id, po)
         vendors.append(vendor)
         purchase_orders.append(po)
+    from app.world.vendors import seed_vendor_history
+    seed_vendor_history(store)
     return {"company": company, "vendors": vendors, "purchase_orders": purchase_orders}
 
 

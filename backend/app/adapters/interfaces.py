@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from app.adapters.bank import BankBalance, BankTransfer
+from app.adapters.bank import BankActivity, BankBalance, BankTransfer
 from app.contract_models import (
     AgentTranscript,
     AuditAnswer,
@@ -35,6 +35,8 @@ class BankAdapter(ServiceAdapter, Protocol):
     async def get_balance(self, account_id: str) -> BankBalance: ...
 
     async def list_transfers(self, account_id: str) -> list[BankTransfer]: ...
+
+    async def account_activity(self, account_id: str) -> list[BankActivity]: ...
 
     async def list_customers(self) -> list[dict[str, Any]]: ...
 
