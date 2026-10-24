@@ -74,6 +74,9 @@ export function AppShell() {
           <SigLogo />
         </Link>
         <nav aria-label="Main" className="flex flex-wrap gap-[18px]">
+          <NavLink to="/bank-change" className={({ isActive }) => linkClass(isActive)}>
+            Bank-change letter
+          </NavLink>
           <NavLink to="/" end className={({ isActive }) => linkClass(isActive)}>
             console
           </NavLink>

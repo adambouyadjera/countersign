@@ -16,6 +16,7 @@ const viewports = [
 
 const PAGES = [
   { path: '/', heading: 'Sig · AP clerk' },
+  { path: '/bank-change', heading: 'Bank-change letter' },
   { path: '/runs/run-example-both/invoices/INV-003', heading: 'INV-003 · Cedar Grove Catering · $640.00' },
   { path: '/attack', heading: 'Write an invoice to fool Sig' },
   { path: '/books', heading: 'The books agree with the bank' },

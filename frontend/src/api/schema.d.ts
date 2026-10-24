@@ -55,7 +55,7 @@ export interface paths {
         put?: never;
         /**
          * Create a standard invoice batch
-         * @description Create five invoices with one poisoned document. The poisoned invoice is not identified in the response.
+         * @description Create five invoices with one poisoned document. The poisoned invoice is not identified in the response. Standard and attack batches never reveal which invoice is poisoned. The additive bank_change kind creates five clean invoices and one untrusted vendor bank-change letter as a supporting document.
          */
         post: operations["create_batch"];
         delete?: never;
@@ -126,7 +126,7 @@ export interface paths {
         put?: never;
         /**
          * Create an attack batch and inbox item
-         * @description Create an attack batch and an inbox item. Substitute the {{ATTACKER_ACCOUNT}} token in attack_text. The attack text must contain 1 to 600 characters. Rate limit: 10 requests per minute.
+         * @description Create an attack batch and an inbox item. Substitute the {{ATTACKER_ACCOUNT}} token in attack_text. The attack text must contain 1 to 600 characters. Rate limit: 10 requests per minute. The poisoned invoice is not identified in the response. Standard and attack batches never reveal which invoice is poisoned.
          */
         post: operations["create_attack"];
         delete?: never;
@@ -561,6 +561,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evidence/bank-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recorded bank-change runs
+         * @description Read saved evidence files only; no live services or database queries. Return recorded runs, including incomplete outcomes, with the default run first and is_default=true. Recorded timestamps and source_file identify the historical recording; payment statuses do not establish settlement.
+         */
+        get: operations["list_bank_change_evidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evidence/bank-change/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a recorded bank-change run
+         * @description Read saved evidence files only; no live services or database queries. The literal run_id default aliases run-1b936c2ea67f4236b644609ac7c72089. Return recorded=true, the original final event timestamp as recorded_at, the docs-relative source_file, normalized screen data, and the original saved evidence. Preserve event sequence numbers and timestamps; missing data from incomplete recordings remains explicit. Only the bank-change evidence replay names the letter as the demonstrated attack, because it is a recording of a finished run. Standard and attack batches never reveal which invoice is poisoned.
+         */
+        get: operations["get_bank_change_evidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -601,6 +641,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -636,6 +685,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -667,8 +725,15 @@ export interface components {
             run_id: string;
             /** Invoice Id */
             invoice_id: string;
+            /** Provider */
+            provider?: string;
             /** Model */
             model: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /** Steps */
             steps: components["schemas"]["AgentTranscriptStep"][];
         };
@@ -776,6 +841,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -906,7 +980,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "standard" | "attack";
+            kind: "standard" | "attack" | "bank_change";
             /**
              * Created At
              * Format: date-time
@@ -914,14 +988,16 @@ export interface components {
             created_at: string;
             /** Invoices */
             invoices: components["schemas"]["InvoiceSummary"][];
+            /** Supporting Documents */
+            supporting_documents?: components["schemas"]["SupportingDocument"][];
         };
         /** BatchRequest */
         BatchRequest: {
             /**
              * Kind
-             * @constant
+             * @enum {string}
              */
-            kind: "standard";
+            kind: "standard" | "bank_change";
         };
         /**
          * CheckCode
@@ -951,6 +1027,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -989,6 +1074,11 @@ export interface components {
             invoice_id: string;
             /** Pages */
             pages: components["schemas"]["DocumentPage"][];
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type?: "invoice" | "vendor_bank_change_letter";
         };
         /** ErrorDetail */
         ErrorDetail: {
@@ -1020,6 +1110,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1131,7 +1230,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "money" | "date" | "string" | "account_number";
+            type: "money" | "date" | "string" | "account_number" | "number";
             span: components["schemas"]["SourceSpan"] | null;
             /**
              * Trust
@@ -1155,6 +1254,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1179,6 +1287,7 @@ export interface components {
             instruction_like_spans: components["schemas"]["SourceSpan"][];
             /** Handles */
             handles: components["schemas"]["Handle"][];
+            extraction_provenance?: components["schemas"]["ExtractionProvenance"];
         };
         /** GraphEdge */
         GraphEdge: {
@@ -1234,7 +1343,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "money" | "date" | "string" | "account_number";
+            type: "money" | "date" | "string" | "account_number" | "number";
             /**
              * Trust
              * @enum {string}
@@ -1289,6 +1398,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1403,6 +1521,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1465,6 +1592,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1526,6 +1662,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1565,6 +1710,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1628,6 +1782,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1736,6 +1899,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1893,6 +2065,11 @@ export interface components {
             /** Lanes */
             lanes: components["schemas"]["RunLane"][];
             tallies?: components["schemas"]["RunTallies"];
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
         };
         /** RunCompletedEvent */
         RunCompletedEvent: {
@@ -1910,6 +2087,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1958,6 +2144,11 @@ export interface components {
             lanes: ("unguarded" | "countersign")[];
             /** Instruction */
             instruction?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
         };
         /** RunStartedEvent */
         RunStartedEvent: {
@@ -1975,6 +2166,15 @@ export interface components {
              * @enum {string}
              */
             mode?: "live" | "offline" | "dry_run";
+            /** Provider */
+            provider?: string;
+            /** Model */
+            model?: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2024,6 +2224,7 @@ export interface components {
             anthropic: components["schemas"]["ServiceHealth"];
             gemini: components["schemas"]["ServiceHealth"];
             bitdeer: components["schemas"]["ServiceHealth"];
+            mutator?: components["schemas"]["ServiceHealth"];
         };
         /** SessionTransfer */
         SessionTransfer: {
@@ -2126,6 +2327,292 @@ export interface components {
             account_display: string;
             /** Journal Entry Id */
             journal_entry_id: string;
+        };
+        /** BankChangeReplay */
+        BankChangeReplay: {
+            /**
+             * Recorded
+             * @constant
+             */
+            recorded: true;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Source File */
+            source_file: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Run Id */
+            run_id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Complete */
+            complete: boolean;
+            /** Status */
+            status: string;
+            /** Unguarded Provider */
+            unguarded_provider: string;
+            /** Unguarded Model */
+            unguarded_model: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
+            summary: components["schemas"]["ReplayCounts"];
+            /** Limitations */
+            limitations: string[];
+            run: components["schemas"]["Run"];
+            batch: components["schemas"]["Batch"];
+            letter?: components["schemas"]["ReplayLetter"];
+            lanes: components["schemas"]["ReplayLanes"];
+            leak_guard?: components["schemas"]["LeakGuard"];
+            /** Events */
+            events: (components["schemas"]["RunStartedEvent"] | components["schemas"]["LaneStatusEvent"] | components["schemas"]["DocumentLoadedEvent"] | components["schemas"]["FieldsExtractedEvent"] | components["schemas"]["PlanProposedEvent"] | components["schemas"]["AgentToolCallEvent"] | components["schemas"]["AgentMessageEvent"] | components["schemas"]["PolicyDecisionEvent"] | components["schemas"]["PaymentExecutedEvent"] | components["schemas"]["PaymentHeldEvent"] | components["schemas"]["ApprovalResolvedEvent"] | components["schemas"]["ErrorEvent"] | components["schemas"]["RunCompletedEvent"] | components["schemas"]["LedgerPostedEvent"] | components["schemas"]["InboxReceivedEvent"])[];
+            held_invoice_graph?: components["schemas"]["ProvenanceGraph"];
+            planner_transcript?: components["schemas"]["PlannerTranscript"];
+            /** Transcripts */
+            transcripts: components["schemas"]["AgentTranscript"][];
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            };
+        };
+        /** BankChangeReplaySummary */
+        BankChangeReplaySummary: {
+            /**
+             * Recorded
+             * @constant
+             */
+            recorded: true;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Source File */
+            source_file: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Run Id */
+            run_id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Complete */
+            complete: boolean;
+            /** Status */
+            status: string;
+            /** Unguarded Provider */
+            unguarded_provider: string;
+            /** Unguarded Model */
+            unguarded_model: string;
+            /**
+             * Unguarded Mode
+             * @enum {string}
+             */
+            unguarded_mode?: "ap" | "ap_with_vendor_updates";
+            summary: components["schemas"]["ReplayCounts"];
+            /** Limitations */
+            limitations: string[];
+        };
+        /** ExtractionAttempt */
+        ExtractionAttempt: {
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failed" | "skipped";
+            /** Http Status */
+            http_status?: number;
+            /** Error Code */
+            error_code?: string;
+        };
+        /** ExtractionProvenance */
+        ExtractionProvenance: {
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /**
+             * Extracted At
+             * Format: date-time
+             */
+            extracted_at: string;
+            /** Cached */
+            cached: boolean;
+            /** Document Sha256 */
+            document_sha256: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Cache Key */
+            cache_key?: string;
+            /** Attempts */
+            attempts?: components["schemas"]["ExtractionAttempt"][];
+        };
+        /** ReplayCounts */
+        ReplayCounts: {
+            unguarded: components["schemas"]["LaneTally"];
+            countersign: components["schemas"]["LaneTally"];
+            /** Letter Payment Count */
+            letter_payment_count: number;
+            /** Countersign Held Correctly */
+            countersign_held_correctly?: boolean;
+        };
+        /** ReplayHold */
+        ReplayHold: {
+            /** Invoice Id */
+            invoice_id: string;
+            /** Invoice Number */
+            invoice_number: string;
+            /** Vendor Id */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /** Reason Codes */
+            reason_codes: ("BANK_DETAILS_MISMATCH" | "AMOUNT_MISMATCH" | "UNKNOWN_VENDOR" | "UNVERIFIED_SOURCE" | "DUPLICATE_INVOICE" | "PLANNER_INVALID" | "POLICY_NOT_IMPLEMENTED" | "OVER_AUTONOMY_LIMIT")[];
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Account On File Display */
+            account_on_file_display?: string;
+            /** Requested Account Display */
+            requested_account_display?: string;
+            /** Letter Account Display */
+            letter_account_display?: string;
+            approval?: components["schemas"]["Approval"];
+        };
+        /** ReplayLane */
+        ReplayLane: {
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "unguarded" | "countersign";
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /**
+             * Model Role
+             * @enum {string}
+             */
+            model_role: "agent" | "planner";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "not_implemented" | "failed" | "completed";
+            tally: components["schemas"]["LaneTally"];
+            /** Extraction Models */
+            extraction_models: components["schemas"]["ReplayModel"][];
+            /** Payments */
+            payments: components["schemas"]["ReplayPayment"][];
+            /** Holds */
+            holds: components["schemas"]["ReplayHold"][];
+        };
+        /** ReplayLanes */
+        ReplayLanes: {
+            unguarded: components["schemas"]["ReplayLane"];
+            countersign: components["schemas"]["ReplayLane"];
+        };
+        /** ReplayLetter */
+        ReplayLetter: {
+            document: components["schemas"]["DocumentText"];
+            /** Text */
+            text: string;
+            /** Vendor Id */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string;
+            /** Requested Account Display */
+            requested_account_display: string;
+            /** Account On File Display */
+            account_on_file_display?: string;
+        };
+        /** ReplayModel */
+        ReplayModel: {
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+        };
+        /** ReplayPayment */
+        ReplayPayment: {
+            /** Transfer Id */
+            transfer_id: string;
+            /** Transfer Status */
+            transfer_status: string;
+            /** From Account Id */
+            from_account_id: string;
+            /** To Account Id */
+            to_account_id: string;
+            /** To Display Number */
+            to_display_number: string;
+            /** Payee Label */
+            payee_label: string;
+            /** Payee On File */
+            payee_on_file: boolean;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Bank Mode
+             * @enum {string}
+             */
+            bank_mode: "live" | "offline" | "dry_run";
+            /** Invoice Id */
+            invoice_id: string;
+            /** Invoice Number */
+            invoice_number: string;
+            /** Vendor Id */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /** Account On File Display */
+            account_on_file_display?: string;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /**
+             * Via
+             * @enum {string}
+             */
+            via: "policy" | "approval" | "agent";
+        };
+        /** SupportingDocument */
+        SupportingDocument: {
+            /** Document Id */
+            document_id: string;
+            /** Invoice Id */
+            invoice_id: string;
+            /** Vendor Id */
+            vendor_id: string;
+            /**
+             * Document Type
+             * @constant
+             */
+            document_type: "vendor_bank_change_letter";
         };
     };
     responses: {
@@ -3063,6 +3550,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvalJob"];
+                };
+            };
+            404: components["responses"]["Error404"];
+            422: components["responses"]["Error422"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    list_bank_change_evidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankChangeReplaySummary"][];
+                };
+            };
+            422: components["responses"]["Error422"];
+            500: components["responses"]["Error500"];
+            503: components["responses"]["Error503"];
+        };
+    };
+    get_bank_change_evidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankChangeReplay"];
                 };
             };
             404: components["responses"]["Error404"];
