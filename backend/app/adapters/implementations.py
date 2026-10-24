@@ -6,10 +6,9 @@ No implementation changes modes after a failed network request.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import logging
 import re
-from typing import Any, Literal, Protocol
+from typing import Literal, Protocol
 
 import httpx
 from pydantic import SecretStr, TypeAdapter
@@ -19,9 +18,7 @@ from app.contract_models import (
     AuditAnswer,
     AuditAskRequest,
     DocumentText,
-    Handle,
     Placement,
-    PlanProposedPayload,
     RunEvent,
     ServiceHealth,
 )
@@ -186,24 +183,7 @@ class OfflineAuditSink(_OfflineService):
 from app.pipeline.extractor import LiveExtractorLLM, OfflineExtractorLLM
 
 
-class _PlannerOperations:
-    async def plan(
-        self,
-        *,
-        instruction: str,
-        vendors: Sequence[Mapping[str, Any]],
-        purchase_orders: Sequence[Mapping[str, Any]],
-        handles: Sequence[Handle],
-    ) -> PlanProposedPayload:
-        raise NotImplementedError("Planner requests and the prompt leak guard are not implemented.")
-
-
-class LivePlannerLLM(_PlannerOperations, _LiveService):
-    pass
-
-
-class OfflinePlannerLLM(_PlannerOperations, _OfflineService):
-    pass
+from app.adapters.planner import LivePlannerLLM, OfflinePlannerLLM
 
 
 class _AgentOperations:

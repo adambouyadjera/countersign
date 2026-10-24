@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -14,10 +13,8 @@ from app.contract_models import (
     Balances,
     DocumentText,
     FieldsExtractedPayload,
-    Handle,
     Payment,
     Placement,
-    PlanProposedPayload,
     RunEvent,
     ServiceHealth,
 )
@@ -71,16 +68,11 @@ class ExtractorLLM(ServiceAdapter, Protocol):
 
 @runtime_checkable
 class PlannerLLM(ServiceAdapter, Protocol):
-    # Raw document text is deliberately absent. Prompt assembly and leak checks
-    # must be implemented before this skeleton can send a planner request.
-    async def plan(
-        self,
-        *,
-        instruction: str,
-        vendors: Sequence[Mapping[str, Any]],
-        purchase_orders: Sequence[Mapping[str, Any]],
-        handles: Sequence[Handle],
-    ) -> PlanProposedPayload: ...
+    # The pipeline assembles and checks this serialized system/messages envelope
+    # before entering the transport. No handle table is exposed here.
+    model: str
+
+    async def complete(self, *, prompt: str) -> str: ...
 
 
 @runtime_checkable

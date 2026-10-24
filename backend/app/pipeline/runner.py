@@ -1,10 +1,9 @@
-"""Thin Countersign execution for frontend integration, before the B6 policy engine."""
+"""Quarantine extraction, plan over handles, and interpret with provenance."""
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import logging
 import re
@@ -18,26 +17,20 @@ from pydantic import ValidationError
 from app.adapters.bank import BankError
 from app.contract_models import (
     Approval, Batch, DocumentText, ExtractedField, FieldsExtractedPayload,
-    InvoiceSummary, LaneTally, Payment, PolicyCheck, PolicyDecision, Run,
+    InvoiceSummary, LaneTally, PolicyCheck, PolicyDecision, Run,
     RunLane, RunRequest, RunTallies, SourceSpan,
 )
 from app.pipeline.extractor import ExtractorError
+from app.pipeline.planner import propose
+from app.security.handles import HandleTable
+from app.security.interpreter import Interpreter
+from app.security.leak_guard import ProvenanceLeakError
 
 
 DEFAULT_INSTRUCTION = (
     "Pay every invoice in this batch that is due within 30 days and matches an "
     "open purchase order. Pay only to accounts on file; anything else needs "
     "human approval."
-)
-_FAILURE_STATUSES = {"failed", "rejected", "cancelled", "canceled", "error"}
-_ROUTING_DIRECTIVE = re.compile(
-    r"\b(?:automated|processor|disregard|supersed\w*|changed\s+banks|"
-    r"bank\s+details|pay\s+separately|payment\s+routing)\b", re.IGNORECASE,
-)
-_PAYMENT_WORD = re.compile(r"\b(?:pay|payment|remit|account|routing)\b", re.IGNORECASE)
-_ACCOUNT_IN_TEXT = re.compile(
-    r"\b(?:account(?:\s+number)?|acct\.?)\s*[:#]?\s*([0-9][0-9 -]{5,}[0-9])",
-    re.IGNORECASE,
 )
 _MONEY = re.compile(r"(?<![\w.])(?:\$|USD\s*)?([0-9][0-9,]*\.[0-9]{2})(?![\d.])")
 _PAYMENT_FIELDS = (
@@ -111,102 +104,6 @@ def _payment_inputs_verified(document, extraction, invoice) -> bool:
     )
 
 
-@dataclass
-class _V0Result:
-    vendor: dict[str, Any] | None
-    amount_cents: int | None
-    requested_account: str
-    checks: list[PolicyCheck]
-    reasons: list[str]
-
-
-def temporary_v0_check(store, document: DocumentText, extraction: FieldsExtractedPayload,
-                       invoice: InvoiceSummary, instruction: str) -> _V0Result:
-    """TEMPORARY v0: replace this entire gate with the B6 deterministic engine.
-
-    This gate is deliberately narrow. It cannot interpret arbitrary trusted
-    instructions, so those require a hold until the planner/policy features land.
-    It never consults scoring metadata and never follows document instructions.
-    """
-    fields = {field.name: field for field in extraction.fields}
-    verified = _payment_inputs_verified(document, extraction, invoice)
-
-    name = fields.get("vendor_name")
-    email = fields.get("vendor_email")
-    vendor = None
-    if name and email and _field_verified(name, document) and _field_verified(email, document):
-        domain = str(email.value).rsplit("@", 1)[-1].casefold()
-        candidates = [row for row in store.list_records("vendors") if (
-            _text(row["name"]) == _text(name.value)
-            and row["email_domain"].casefold() == domain
-            and row["vendor_id"] == invoice.vendor_id
-        )]
-        vendor = candidates[0] if len(candidates) == 1 else None
-    account_field = fields.get("remit_account_number")
-    requested = str(account_field.value) if account_field and account_field.value is not None else ""
-    on_file = str(vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))) if vendor else ""
-    account_matches = bool(vendor and _account(requested) == _account(on_file))
-
-    po_field = fields.get("po_number")
-    orders = []
-    if vendor and po_field and _field_verified(po_field, document):
-        orders = [row for row in store.list_records("purchase_orders") if (
-            row["vendor_id"] == vendor["vendor_id"] and row["status"] == "open"
-            and row["purchase_order_id"] in vendor["purchase_order_ids"]
-            and _text(row["po_number"]) == _text(po_field.value)
-        )]
-    amount_field = fields.get("amount_due_cents")
-    amount = amount_field.value if amount_field and type(amount_field.value) is int else None
-    amount_matches = bool(len(orders) == 1 and amount is not None and amount > 0 and amount == orders[0]["amount_cents"])
-    amount_matches = amount_matches and bool(fields.get("currency") and fields["currency"].value == "USD")
-
-    routing_conflict = False
-    for span in extraction.instruction_like_spans:
-        if not _span_verified(span, document):
-            continue
-        numbers = [_account(match[1]) for match in _ACCOUNT_IN_TEXT.finditer(span.quote)]
-        off_master = [number for number in numbers if number != _account(on_file)]
-        if off_master:
-            routing_conflict = True
-            # Review metadata records the requested redirection from its verified
-            # instruction span. This is never used as the payment destination.
-            requested = off_master[0]
-        if _ROUTING_DIRECTIVE.search(span.quote) and _PAYMENT_WORD.search(span.quote):
-            routing_conflict = True
-
-    reasons = []
-    if not verified:
-        reasons.append("UNVERIFIED_SOURCE")
-    if vendor is None:
-        reasons.append("UNKNOWN_VENDOR")
-    if not account_matches or routing_conflict:
-        reasons.append("BANK_DETAILS_MISMATCH")
-    if not amount_matches:
-        reasons.append("AMOUNT_MISMATCH")
-    if instruction != DEFAULT_INSTRUCTION:
-        reasons.append("POLICY_NOT_IMPLEMENTED")
-    due = fields.get("due_date")
-    try:
-        due_date = date.fromisoformat(str(due.value)) if due else None
-    except ValueError:
-        due_date = None
-    if due_date is None or due_date > datetime.now(timezone.utc).date() + timedelta(days=30):
-        reasons.append("POLICY_NOT_IMPLEMENTED")
-    checks = [
-        PolicyCheck(code="VENDOR_KNOWN", passed=vendor is not None,
-                    message="Vendor identity is bound to the trusted master.", evidence_node_ids=[]),
-        PolicyCheck(code="SPAN_VERIFIED", passed=verified,
-                    message="Payment inputs must match verified original source slices and values.", evidence_node_ids=[]),
-        PolicyCheck(code="PAYEE_ON_FILE", passed=account_matches and not routing_conflict,
-                    message="Remittance must match the master without conflicting routing instructions.", evidence_node_ids=[]),
-        PolicyCheck(code="AMOUNT_MATCHES_PO", passed=amount_matches,
-                    message="USD total must equal an open purchase order belonging to this vendor.", evidence_node_ids=[]),
-        PolicyCheck(code="INSTRUCTIONS_IN_DOCUMENT", passed=not routing_conflict,
-                    message="Automated payment redirection requires human review.", evidence_node_ids=[]),
-    ]
-    return _V0Result(vendor, amount, requested, checks, list(dict.fromkeys(reasons)))
-
-
 class RunManager:
     """Keep background runs alive independently of the initiating HTTP request."""
 
@@ -220,7 +117,7 @@ class RunManager:
 
     @property
     def mode(self):
-        return "offline" if "offline" in {self.adapters.extractor.mode, self.adapters.bank.mode} else "live"
+        return "offline" if "offline" in {self.adapters.extractor.mode, self.adapters.planner.mode} else "live"
 
     def start(self, request: RunRequest) -> Run:
         if self._closed:
@@ -239,6 +136,10 @@ class RunManager:
             lanes=[RunLane(lane=lane, status="running" if lane == "countersign" else "not_implemented") for lane in lanes],
         )
         self.store.save_run(run)
+        self.store.save_record("planner_transcripts", run.run_id, {
+            "run_id": run.run_id, "calls": [],
+            "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
+        })
         self._tasks[run.run_id] = asyncio.create_task(self._execute(run, batch), name=run.run_id)
         return run
 
@@ -285,7 +186,7 @@ class RunManager:
             "batch_id": run.batch_id, "lanes": [lane.lane for lane in run.lanes],
             "instruction": run.instruction,
             "models": {"extractor": getattr(self.adapters.extractor, "model", self.settings.extractor_model),
-                       "planner": "not_implemented", "unguarded": "not_implemented"},
+                       "planner": self.adapters.planner.model, "unguarded": "not_implemented"},
         }, lane="system")
 
     async def _finish(self, run: Run, tally: LaneTally, *, failed: bool) -> None:
@@ -300,6 +201,9 @@ class RunManager:
         tally = LaneTally(paid_count=0, paid_cents=0, held_count=0, blocked_count=0,
                           not_on_file_count=0, not_on_file_cents=0)
         failed = False
+        pending = {invoice.invoice_id: invoice for invoice in batch.invoices}
+        documents = []
+        table = HandleTable()
         try:
             await self._started(run)
             for lane in run.lanes:
@@ -307,40 +211,65 @@ class RunManager:
                     "status": lane.status,
                     **({"detail": "The unguarded lane is not implemented in B3."} if lane.lane == "unguarded" else {}),
                 }, lane=lane.lane)
-            for invoice in batch.invoices:
+            for position, invoice in enumerate(batch.invoices, 1):
+                progress = {"stage": "pdf_text"}
                 try:
-                    await self._invoice(run, invoice, tally)
+                    await self._extract(run, invoice, position, table, documents, progress)
                 except asyncio.CancelledError:
-                    await self._processing_failed(run, invoice, tally, _InvoiceProcessingError(
-                        "cancelled", "invoice processing interrupted; reconcile any persisted bank attempts (cancelled)",
-                    ))
                     raise
                 except Exception as error:
                     failed = True
-                    await self._processing_failed(run, invoice, tally, error)
+                    failure = self._classify_failure(error, progress["stage"])
+                    await self._processing_failed(run, invoice, tally, failure)
+                    pending.pop(invoice.invoice_id, None)
+            if table.invoices:
+                vendors = self.store.list_records("vendors")
+                purchase_orders = self.store.list_records("purchase_orders")
+                plan = await propose(
+                    run_id=run.run_id, instruction=run.instruction, vendors=vendors,
+                    purchase_orders=purchase_orders, table=table, documents=documents,
+                    adapter=self.adapters.planner, store=self.store,
+                )
+                # The program uses document aliases; the public event binds its
+                # steps back to API invoice identities for graph/event consumers.
+                public_plan = plan.model_copy(update={"steps": [
+                    step.model_copy(update={"invoice_id": table.invoices[step.invoice_id]})
+                    for step in plan.steps
+                ]})
+                await self._event(run.run_id, "plan.proposed", public_plan.model_dump(mode="python"))
+                # The interpreter has no bank adapter. The B6 policy stub always
+                # holds intents; no LLM output can call a transfer in this lane.
+                result = Interpreter(table, vendors, purchase_orders).execute(plan.steps)
+                intents = {intent.invoice_id: intent for intent in result.intents}
+                for invoice_id, reasons in result.outcomes.items():
+                    invoice = pending[invoice_id]
+                    intent = intents.get(invoice_id)
+                    await self._hold(
+                        run, invoice, tally, reasons,
+                        amount=intent.amount.value if intent else None,
+                        requested_account=str(intent.to_account.value) if intent else "",
+                    )
+                    pending.pop(invoice_id)
         except asyncio.CancelledError:
             failed = True
             await self._event(run.run_id, "error", {
-                "message": "Run interrupted during shutdown (run); inspect persisted bank attempts before retrying.",
-                "recoverable": False,
+                "message": "Run interrupted during shutdown (run).", "recoverable": False,
             })
         except Exception as error:
             failed = True
-            _LOGGER.error("Run processing failed run_id=%s stage=run cause=%s", run.run_id, type(error).__name__)
-            await self._event(run.run_id, "error", {
-                "message": f"Run processing failed (run: {type(error).__name__}).", "recoverable": False,
-            })
+            _LOGGER.error("Run processing failed run_id=%s stage=planner cause=%s", run.run_id, type(error).__name__)
+            message = (
+                "Planner prompt rejected by provenance leak guard (leak_guard: ProvenanceLeakError)."
+                if isinstance(error, ProvenanceLeakError) else
+                f"Run processing failed (planner: {type(error).__name__})."
+            )
+            await self._event(run.run_id, "error", {"message": message, "recoverable": False})
         finally:
+            # Provider failures, guard failures, cancellation, or unexpected
+            # interpreter errors leave a durable hold for every pending invoice.
+            for invoice in pending.values():
+                await self._hold(run, invoice, tally, ["PLANNER_INVALID"])
             await self._finish(run, tally, failed=failed)
-
-    async def _invoice(self, run: Run, invoice: InvoiceSummary, tally: LaneTally) -> None:
-        progress = {"stage": "pdf_text"}
-        try:
-            await self._process_invoice(run, invoice, tally, progress)
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            raise self._classify_failure(error, progress["stage"]) from None
 
     def _classify_failure(self, error: Exception, stage: str) -> _InvoiceProcessingError:
         if isinstance(error, _InvoiceProcessingError):
@@ -389,40 +318,44 @@ class RunManager:
         await self._event(run.run_id, "error", {
             "message": failure.safe_summary, "recoverable": True, "invoice_id": invoice.invoice_id,
         })
+        await self._hold(run, invoice, tally, ["UNVERIFIED_SOURCE"], checks=[PolicyCheck(
+            code="SPAN_VERIFIED", passed=False,
+            message=f"Processing failed at {failure.stage}; the payment requires human review.",
+            evidence_node_ids=[],
+        )])
+
+    async def _hold(self, run, invoice, tally, reasons, *, checks=None, amount=None, requested_account="") -> None:
         vendor = self.store.get_record("vendors", invoice.vendor_id) or {}
         approval_id = f"approval-{uuid4().hex}"
         decision = PolicyDecision(
             decision_id=f"decision-{uuid4().hex}", run_id=run.run_id, invoice_id=invoice.invoice_id,
-            outcome="HOLD", reason_codes=["UNVERIFIED_SOURCE"], approval_id=approval_id,
-            checks=[PolicyCheck(
-                code="SPAN_VERIFIED", passed=False,
-                message=f"Processing failed at {failure.stage}; the payment requires human review.",
-                evidence_node_ids=[],
-            )],
+            outcome="HOLD", reason_codes=reasons, approval_id=approval_id, checks=checks or [],
         )
         self.store.save_record("decisions", decision.decision_id, decision)
         await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
         approval = Approval(
             approval_id=approval_id, run_id=run.run_id, invoice_id=invoice.invoice_id,
             invoice_number=invoice.invoice_number, vendor_name=vendor.get("name", invoice.vendor_name),
-            amount_cents=invoice.amount_cents, requested_account_display="",
+            amount_cents=amount if type(amount) is int else invoice.amount_cents,
+            requested_account_display=requested_account,
             account_on_file_display=str(vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))),
-            reason_codes=["UNVERIFIED_SOURCE"], status="pending", created_at=datetime.now(timezone.utc),
+            reason_codes=reasons, status="pending", created_at=datetime.now(timezone.utc),
             requested_by="person-ap-agent", required_role="ap_manager",
         )
         self.store.save_record("approvals", approval_id, approval)
         tally.held_count += 1
         await self._event(run.run_id, "payment.held", {
-            "invoice_id": invoice.invoice_id, "approval_id": approval_id, "reason_codes": ["UNVERIFIED_SOURCE"],
+            "invoice_id": invoice.invoice_id, "approval_id": approval_id, "reason_codes": reasons,
         })
 
-    async def _process_invoice(self, run, invoice, tally, progress) -> None:
+    async def _extract(self, run, invoice, position, table, documents, progress):
         record = self.store.get_record("documents", invoice.document_id)
         if record is None:
             raise ValueError("Missing stored document")
         document = DocumentText.model_validate(record["text"])
         if document.invoice_id != invoice.invoice_id:
             raise ValueError("Document invoice identity mismatch")
+        documents.append(document)
         await self._event(run.run_id, "document.loaded", {
             "invoice_id": invoice.invoice_id, "document_id": document.document_id,
             "pages": len(document.pages), "line_count": sum(len(page.lines) for page in document.pages),
@@ -433,6 +366,9 @@ class RunManager:
         extraction = FieldsExtractedPayload.model_validate(extracted)
         if extraction.invoice_id != invoice.invoice_id:
             raise ValueError("Extraction invoice identity mismatch")
+        # Discard adapter-supplied handle names. Only the server's batch position
+        # and fixed extraction field vocabulary can name a planner handle.
+        extraction.handles = HandleTable().add_invoice(document, extraction, position)
         extraction_id = f"{run.run_id}:{invoice.invoice_id}"
         self.store.save_record("extractions", extraction_id, {
             "extraction_id": extraction_id, "run_id": run.run_id,
@@ -442,62 +378,5 @@ class RunManager:
         progress["stage"] = "span_verification"
         if not _payment_inputs_verified(document, extraction, invoice):
             raise _InvoiceProcessingError("span_verification", "payment source verification failed (span_verification)")
-        progress["stage"] = "policy"
-        check = temporary_v0_check(self.store, document, extraction, invoice, run.instruction)
-        approval_id = f"approval-{uuid4().hex}" if check.reasons else None
-        decision = PolicyDecision(
-            decision_id=f"decision-{uuid4().hex}", run_id=run.run_id, invoice_id=invoice.invoice_id,
-            outcome="HOLD" if check.reasons else "ALLOW", checks=check.checks, reason_codes=check.reasons,
-            **({"approval_id": approval_id} if approval_id else {}),
-        )
-        self.store.save_record("decisions", decision.decision_id, decision)
-        await self._event(run.run_id, "policy.decision", {"decision": decision.model_dump(mode="python")})
-        if check.reasons:
-            vendor = check.vendor or {}
-            approval = Approval(
-                approval_id=approval_id, run_id=run.run_id, invoice_id=invoice.invoice_id,
-                invoice_number=invoice.invoice_number, vendor_name=vendor.get("name", invoice.vendor_name),
-                amount_cents=check.amount_cents if check.amount_cents is not None else invoice.amount_cents,
-                requested_account_display=check.requested_account,
-                account_on_file_display=str(vendor.get("account_on_file_display", vendor.get("remit_account_number", ""))),
-                reason_codes=check.reasons, status="pending", created_at=datetime.now(timezone.utc),
-                requested_by="person-ap-agent", required_role="ap_manager",
-            )
-            self.store.save_record("approvals", approval.approval_id, approval)
-            tally.held_count += 1
-            await self._event(run.run_id, "payment.held", {
-                "invoice_id": invoice.invoice_id, "approval_id": approval.approval_id, "reason_codes": check.reasons,
-            })
-            return
-        progress["stage"] = "nessie"
-        directory = [row for row in self.store.list_records("bank_directory") if row["mode"] == self.adapters.bank.mode]
-        companies = [row for row in directory if row["role"] == "company"]
-        on_file = check.vendor.get("account_on_file_display", check.vendor["remit_account_number"])
-        payees = [row for row in directory if row["display_number"] == on_file]
-        if len(companies) != 1 or len(payees) != 1:
-            raise ValueError("Bank directory is not seeded for this payment")
-        payment_result = await self.adapters.bank.transfer(
-            from_account_id=companies[0]["account_id"], to_account_id=payees[0]["account_id"],
-            amount_cents=check.amount_cents,
-            description=f"Countersign {invoice.invoice_number} ({invoice.invoice_id})",
-        )
-        # The current public v1 Payment has no detail field. Both paired bank IDs
-        # remain in the adapter's durable record until the contract owner adds it.
-        payment = Payment.model_validate(payment_result.model_dump(mode="python", exclude={"detail"}))
-        if (not payment.transfer_id or payment.bank_mode != self.adapters.bank.mode
-                or payment.from_account_id != companies[0]["account_id"]
-                or payment.to_account_id != payees[0]["account_id"]
-                or payment.amount_cents != check.amount_cents or not payment.payee_on_file
-                or payment.transfer_status.casefold() in _FAILURE_STATUSES):
-            raise ValueError("Bank payment result needs reconciliation")
-        saved = self.store.get_record("transfers", payment.transfer_id) or payment_result.model_dump(mode="json")
-        self.store.save_record("transfers", payment.transfer_id, {
-            **saved, "run_id": run.run_id, "invoice_id": invoice.invoice_id,
-        })
-        await self._event(run.run_id, "payment.executed", {
-            "invoice_id": invoice.invoice_id, "via": "policy", "payment": payment.model_dump(mode="python"),
-        }, mode=self.adapters.bank.mode)
-        # Contract paid_* tallies count accepted submissions, preserving the real
-        # transfer_status (including pending); they do not claim bank settlement.
-        tally.paid_count += 1
-        tally.paid_cents += payment.amount_cents
+        table.add_invoice(document, extraction, position)
+        return extraction

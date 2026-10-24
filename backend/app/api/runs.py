@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from app.contract_models import ErrorResponse, PolicyDecision, Run, RunRequest
+from app.contract_models import ErrorResponse, PlannerTranscript, PolicyDecision, Run, RunRequest
 
 
 router = APIRouter()
@@ -31,6 +31,18 @@ async def get_run_decisions(run_id: str, request: Request) -> list[PolicyDecisio
     if request.app.state.store.get_run(run_id) is None:
         raise HTTPException(404, "Run not found")
     return [PolicyDecision.model_validate(record) for record in request.app.state.store.list_records("decisions", run_id=run_id)]
+
+
+@router.get("/runs/{run_id}/planner_transcript", response_model=PlannerTranscript,
+            operation_id="get_planner_transcript", responses={404: {"model": ErrorResponse}})
+async def get_planner_transcript(run_id: str, request: Request) -> PlannerTranscript:
+    if request.app.state.store.get_run(run_id) is None:
+        raise HTTPException(404, "Run not found")
+    record = request.app.state.store.get_record("planner_transcripts", run_id)
+    return PlannerTranscript.model_validate(record or {
+        "run_id": run_id, "calls": [],
+        "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
+    })
 
 
 @router.get(

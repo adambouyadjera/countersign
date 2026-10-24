@@ -39,6 +39,7 @@ def test_missing_credentials_do_not_prevent_settings_startup():
         assert getattr(settings, name).get_secret_value() == ""
     assert settings.nessie_mode == "live"
     assert settings.elastic_mode == "live"
+    assert settings.planner_mode == "live"
     assert settings.cors_origins == ["http://localhost:5173"]
 
 

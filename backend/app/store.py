@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from app.contract_models import Run, RunEvent
+from app.contract_models import PlannerTranscript, Run, RunEvent
 
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
@@ -27,6 +27,7 @@ _RECORD_TABLES = {
     "invoice_scoring": "invoice_id",
     "documents": "document_id",
     "extractions": "extraction_id",
+    "planner_transcripts": "run_id",
     "batches": "batch_id",
     "runs": "run_id",
     "decisions": "decision_id",
@@ -128,6 +129,11 @@ class Store:
             if run.run_id != record_id:
                 raise ValueError("record_id must match run.run_id")
             data = run.model_dump(mode="json", exclude_none=True)
+        elif table == "planner_transcripts":
+            transcript = PlannerTranscript.model_validate(data)
+            if transcript.run_id != record_id:
+                raise ValueError("record_id must match transcript.run_id")
+            data = transcript.model_dump(mode="json")
         encoded = json.dumps(data, separators=(",", ":"), allow_nan=False)
         key = _RECORD_TABLES[table]
         with self._lock:
@@ -280,7 +286,7 @@ class Store:
             connection = self._db()
             connection.execute("BEGIN IMMEDIATE")
             try:
-                for table in ("events", "decisions", "approvals", "runs"):
+                for table in ("events", "decisions", "approvals", "planner_transcripts", "runs"):
                     connection.execute(f"DELETE FROM {table}")
                 connection.execute(
                     "UPDATE metadata SET value = ? WHERE key = ?",
