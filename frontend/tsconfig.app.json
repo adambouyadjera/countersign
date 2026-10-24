@@ -19,7 +19,8 @@
     "noUncheckedIndexedAccess": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "resolveJsonModule": true,
+    "paths": { "@/*": ["src/*"], "@fixtures/*": ["../contracts/fixtures/*"] }
   },
   "include": ["src"]
 }

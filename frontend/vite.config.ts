@@ -1,19 +1,25 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 const apiTarget = 'http://localhost:8000'
+// Contract fixtures live outside frontend/. Only mock mode (VITE_USE_MOCK=1) imports them.
+const fixturesDir = fileURLToPath(new URL('../contracts/fixtures', import.meta.url))
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@fixtures': fixturesDir,
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
   server: {
     port: 5173,
     strictPort: true,
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), fixturesDir] },
     proxy: {
       '/api': {
         target: apiTarget,
