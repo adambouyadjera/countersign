@@ -1,0 +1,10 @@
+[
+  {
+    "item_id": "inbox-example-1",
+    "document_id": "doc-INV-003",
+    "sender": "billing@example.invalid",
+    "received_at": "2026-10-23T17:00:02Z",
+    "status": "processed",
+    "run_id": "run-example-both"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "sod_violation",
+    "message": "Only a vendor_admin may change a vendor account.",
+    "detail": {
+      "actor_id": "person-ap-agent",
+      "required_role": "vendor_admin"
+    }
+  }
+}

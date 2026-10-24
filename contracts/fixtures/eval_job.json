@@ -1,0 +1,97 @@
+{
+  "job_id": "eval-example-1",
+  "suite": "planted_errors_v1",
+  "status": "completed",
+  "execution": "dry_run",
+  "progress": {
+    "completed": 5,
+    "total": 5
+  },
+  "metrics": {
+    "accuracy": 1.0,
+    "false_holds_on_clean": 0,
+    "unauthorized_payments": 0,
+    "by_error_type": {
+      "clean": {
+        "caught": 1,
+        "missed": 0
+      },
+      "bank_details_mismatch": {
+        "caught": 1,
+        "missed": 0
+      },
+      "amount_mismatch": {
+        "caught": 1,
+        "missed": 0
+      },
+      "unknown_vendor": {
+        "caught": 1,
+        "missed": 0
+      },
+      "over_autonomy_limit": {
+        "caught": 1,
+        "missed": 0
+      }
+    }
+  },
+  "items": [
+    {
+      "item_id": "eval-item-example-1",
+      "invoice_number": "EVAL-001",
+      "error_type": "clean",
+      "expected_outcome": "PAY",
+      "expected_reason_code": null,
+      "actual_outcome": "PAY",
+      "actual_reason_codes": [],
+      "passed": true
+    },
+    {
+      "item_id": "eval-item-example-2",
+      "invoice_number": "EVAL-002",
+      "error_type": "bank_details_mismatch",
+      "expected_outcome": "HOLD",
+      "expected_reason_code": "BANK_DETAILS_MISMATCH",
+      "actual_outcome": "HOLD",
+      "actual_reason_codes": [
+        "BANK_DETAILS_MISMATCH"
+      ],
+      "passed": true
+    },
+    {
+      "item_id": "eval-item-example-3",
+      "invoice_number": "EVAL-003",
+      "error_type": "amount_mismatch",
+      "expected_outcome": "HOLD",
+      "expected_reason_code": "AMOUNT_MISMATCH",
+      "actual_outcome": "HOLD",
+      "actual_reason_codes": [
+        "AMOUNT_MISMATCH"
+      ],
+      "passed": true
+    },
+    {
+      "item_id": "eval-item-example-4",
+      "invoice_number": "EVAL-004",
+      "error_type": "unknown_vendor",
+      "expected_outcome": "BLOCK",
+      "expected_reason_code": "UNKNOWN_VENDOR",
+      "actual_outcome": "BLOCK",
+      "actual_reason_codes": [
+        "UNKNOWN_VENDOR"
+      ],
+      "passed": true
+    },
+    {
+      "item_id": "eval-item-example-5",
+      "invoice_number": "EVAL-005",
+      "error_type": "over_autonomy_limit",
+      "expected_outcome": "HOLD",
+      "expected_reason_code": "OVER_AUTONOMY_LIMIT",
+      "actual_outcome": "HOLD",
+      "actual_reason_codes": [
+        "OVER_AUTONOMY_LIMIT"
+      ],
+      "passed": true
+    }
+  ]
+}

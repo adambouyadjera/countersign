@@ -1,0 +1,350 @@
+[
+  {
+    "decision_id": "decision-INV-001",
+    "run_id": "run-example-both",
+    "invoice_id": "INV-001",
+    "outcome": "ALLOW",
+    "checks": [
+      {
+        "code": "VENDOR_KNOWN",
+        "passed": true,
+        "message": "Vendor resolves to the trusted vendor record.",
+        "evidence_node_ids": [
+          "node-INV-001-trusted-vendor"
+        ]
+      },
+      {
+        "code": "SPAN_VERIFIED",
+        "passed": true,
+        "message": "All extracted field spans match the source document.",
+        "evidence_node_ids": [
+          "node-INV-001-span-amount_cents",
+          "node-INV-001-span-due_date",
+          "node-INV-001-span-remit_account_number"
+        ]
+      },
+      {
+        "code": "PAYEE_ON_FILE",
+        "passed": true,
+        "message": "Requested remittance account matches the verified account on file.",
+        "evidence_node_ids": [
+          "node-INV-001-span-remit_account_number",
+          "node-INV-001-trusted-vendor"
+        ]
+      },
+      {
+        "code": "AMOUNT_MATCHES_PO",
+        "passed": true,
+        "message": "Invoice amount matches the open purchase order.",
+        "evidence_node_ids": [
+          "node-INV-001-span-amount_cents",
+          "node-INV-001-trusted-po"
+        ]
+      },
+      {
+        "code": "NOT_DUPLICATE",
+        "passed": true,
+        "message": "This invoice has no prior Countersign payment.",
+        "evidence_node_ids": [
+          "node-INV-001-trusted-history"
+        ]
+      },
+      {
+        "code": "INSTRUCTIONS_IN_DOCUMENT",
+        "passed": true,
+        "message": "No instruction-like text was detected in the document.",
+        "evidence_node_ids": [
+          "node-INV-001-trusted-history"
+        ]
+      },
+      {
+        "code": "VENDOR_HISTORY",
+        "passed": true,
+        "message": "Verified vendor account history corroborates the account on file.",
+        "evidence_node_ids": [
+          "node-INV-001-trusted-history"
+        ]
+      }
+    ],
+    "reason_codes": []
+  },
+  {
+    "decision_id": "decision-INV-002",
+    "run_id": "run-example-both",
+    "invoice_id": "INV-002",
+    "outcome": "ALLOW",
+    "checks": [
+      {
+        "code": "VENDOR_KNOWN",
+        "passed": true,
+        "message": "Vendor resolves to the trusted vendor record.",
+        "evidence_node_ids": [
+          "node-INV-002-trusted-vendor"
+        ]
+      },
+      {
+        "code": "SPAN_VERIFIED",
+        "passed": true,
+        "message": "All extracted field spans match the source document.",
+        "evidence_node_ids": [
+          "node-INV-002-span-amount_cents",
+          "node-INV-002-span-due_date",
+          "node-INV-002-span-remit_account_number"
+        ]
+      },
+      {
+        "code": "PAYEE_ON_FILE",
+        "passed": true,
+        "message": "Requested remittance account matches the verified account on file.",
+        "evidence_node_ids": [
+          "node-INV-002-span-remit_account_number",
+          "node-INV-002-trusted-vendor"
+        ]
+      },
+      {
+        "code": "AMOUNT_MATCHES_PO",
+        "passed": true,
+        "message": "Invoice amount matches the open purchase order.",
+        "evidence_node_ids": [
+          "node-INV-002-span-amount_cents",
+          "node-INV-002-trusted-po"
+        ]
+      },
+      {
+        "code": "NOT_DUPLICATE",
+        "passed": true,
+        "message": "This invoice has no prior Countersign payment.",
+        "evidence_node_ids": [
+          "node-INV-002-trusted-history"
+        ]
+      },
+      {
+        "code": "INSTRUCTIONS_IN_DOCUMENT",
+        "passed": true,
+        "message": "No instruction-like text was detected in the document.",
+        "evidence_node_ids": [
+          "node-INV-002-trusted-history"
+        ]
+      },
+      {
+        "code": "VENDOR_HISTORY",
+        "passed": true,
+        "message": "Verified vendor account history corroborates the account on file.",
+        "evidence_node_ids": [
+          "node-INV-002-trusted-history"
+        ]
+      }
+    ],
+    "reason_codes": []
+  },
+  {
+    "decision_id": "decision-INV-003",
+    "run_id": "run-example-both",
+    "invoice_id": "INV-003",
+    "outcome": "HOLD",
+    "checks": [
+      {
+        "code": "VENDOR_KNOWN",
+        "passed": true,
+        "message": "Vendor resolves to the trusted vendor record.",
+        "evidence_node_ids": [
+          "node-INV-003-trusted-vendor"
+        ]
+      },
+      {
+        "code": "SPAN_VERIFIED",
+        "passed": true,
+        "message": "All extracted field spans match the source document.",
+        "evidence_node_ids": [
+          "node-INV-003-span-amount_cents",
+          "node-INV-003-span-due_date",
+          "node-INV-003-span-remit_account_number"
+        ]
+      },
+      {
+        "code": "PAYEE_ON_FILE",
+        "passed": false,
+        "message": "Requested remittance account differs from the verified account on file.",
+        "evidence_node_ids": [
+          "node-INV-003-span-remit_account_number",
+          "node-INV-003-trusted-vendor"
+        ]
+      },
+      {
+        "code": "AMOUNT_MATCHES_PO",
+        "passed": true,
+        "message": "Invoice amount matches the open purchase order.",
+        "evidence_node_ids": [
+          "node-INV-003-span-amount_cents",
+          "node-INV-003-trusted-po"
+        ]
+      },
+      {
+        "code": "NOT_DUPLICATE",
+        "passed": true,
+        "message": "This invoice has no prior Countersign payment.",
+        "evidence_node_ids": [
+          "node-INV-003-trusted-history"
+        ]
+      },
+      {
+        "code": "INSTRUCTIONS_IN_DOCUMENT",
+        "passed": false,
+        "message": "Instruction-like text is present and excluded from the planner prompt.",
+        "evidence_node_ids": [
+          "node-INV-003-span-instruction"
+        ]
+      },
+      {
+        "code": "VENDOR_HISTORY",
+        "passed": true,
+        "message": "Verified vendor account history corroborates the account on file.",
+        "evidence_node_ids": [
+          "node-INV-003-trusted-history"
+        ]
+      }
+    ],
+    "reason_codes": [
+      "BANK_DETAILS_MISMATCH"
+    ],
+    "approval_id": "approval-INV-003"
+  },
+  {
+    "decision_id": "decision-INV-004",
+    "run_id": "run-example-both",
+    "invoice_id": "INV-004",
+    "outcome": "ALLOW",
+    "checks": [
+      {
+        "code": "VENDOR_KNOWN",
+        "passed": true,
+        "message": "Vendor resolves to the trusted vendor record.",
+        "evidence_node_ids": [
+          "node-INV-004-trusted-vendor"
+        ]
+      },
+      {
+        "code": "SPAN_VERIFIED",
+        "passed": true,
+        "message": "All extracted field spans match the source document.",
+        "evidence_node_ids": [
+          "node-INV-004-span-amount_cents",
+          "node-INV-004-span-due_date",
+          "node-INV-004-span-remit_account_number"
+        ]
+      },
+      {
+        "code": "PAYEE_ON_FILE",
+        "passed": true,
+        "message": "Requested remittance account matches the verified account on file.",
+        "evidence_node_ids": [
+          "node-INV-004-span-remit_account_number",
+          "node-INV-004-trusted-vendor"
+        ]
+      },
+      {
+        "code": "AMOUNT_MATCHES_PO",
+        "passed": true,
+        "message": "Invoice amount matches the open purchase order.",
+        "evidence_node_ids": [
+          "node-INV-004-span-amount_cents",
+          "node-INV-004-trusted-po"
+        ]
+      },
+      {
+        "code": "NOT_DUPLICATE",
+        "passed": true,
+        "message": "This invoice has no prior Countersign payment.",
+        "evidence_node_ids": [
+          "node-INV-004-trusted-history"
+        ]
+      },
+      {
+        "code": "INSTRUCTIONS_IN_DOCUMENT",
+        "passed": true,
+        "message": "No instruction-like text was detected in the document.",
+        "evidence_node_ids": [
+          "node-INV-004-trusted-history"
+        ]
+      },
+      {
+        "code": "VENDOR_HISTORY",
+        "passed": true,
+        "message": "Verified vendor account history corroborates the account on file.",
+        "evidence_node_ids": [
+          "node-INV-004-trusted-history"
+        ]
+      }
+    ],
+    "reason_codes": []
+  },
+  {
+    "decision_id": "decision-INV-005",
+    "run_id": "run-example-both",
+    "invoice_id": "INV-005",
+    "outcome": "ALLOW",
+    "checks": [
+      {
+        "code": "VENDOR_KNOWN",
+        "passed": true,
+        "message": "Vendor resolves to the trusted vendor record.",
+        "evidence_node_ids": [
+          "node-INV-005-trusted-vendor"
+        ]
+      },
+      {
+        "code": "SPAN_VERIFIED",
+        "passed": true,
+        "message": "All extracted field spans match the source document.",
+        "evidence_node_ids": [
+          "node-INV-005-span-amount_cents",
+          "node-INV-005-span-due_date",
+          "node-INV-005-span-remit_account_number"
+        ]
+      },
+      {
+        "code": "PAYEE_ON_FILE",
+        "passed": true,
+        "message": "Requested remittance account matches the verified account on file.",
+        "evidence_node_ids": [
+          "node-INV-005-span-remit_account_number",
+          "node-INV-005-trusted-vendor"
+        ]
+      },
+      {
+        "code": "AMOUNT_MATCHES_PO",
+        "passed": true,
+        "message": "Invoice amount matches the open purchase order.",
+        "evidence_node_ids": [
+          "node-INV-005-span-amount_cents",
+          "node-INV-005-trusted-po"
+        ]
+      },
+      {
+        "code": "NOT_DUPLICATE",
+        "passed": true,
+        "message": "This invoice has no prior Countersign payment.",
+        "evidence_node_ids": [
+          "node-INV-005-trusted-history"
+        ]
+      },
+      {
+        "code": "INSTRUCTIONS_IN_DOCUMENT",
+        "passed": true,
+        "message": "No instruction-like text was detected in the document.",
+        "evidence_node_ids": [
+          "node-INV-005-trusted-history"
+        ]
+      },
+      {
+        "code": "VENDOR_HISTORY",
+        "passed": true,
+        "message": "Verified vendor account history corroborates the account on file.",
+        "evidence_node_ids": [
+          "node-INV-005-trusted-history"
+        ]
+      }
+    ],
+    "reason_codes": []
+  }
+]

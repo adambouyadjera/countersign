@@ -1,0 +1,26 @@
+[
+  {
+    "person_id": "person-ap-agent",
+    "name": "Fogline AP Agent",
+    "role": "ap_agent",
+    "approval_limit_cents": 150000
+  },
+  {
+    "person_id": "person-ap-manager",
+    "name": "Avery Chen",
+    "role": "ap_manager",
+    "approval_limit_cents": 200000
+  },
+  {
+    "person_id": "person-controller",
+    "name": "Jordan Patel",
+    "role": "controller",
+    "approval_limit_cents": null
+  },
+  {
+    "person_id": "person-vendor-admin",
+    "name": "Morgan Diaz",
+    "role": "vendor_admin",
+    "approval_limit_cents": 0
+  }
+]
