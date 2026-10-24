@@ -21,6 +21,13 @@ function byId(id: string | undefined, fixtureId: string, body: unknown, what: st
   return id === fixtureId ? ok(body) : noFixture(`${what} ${id}`)
 }
 
+let autopilotState = { ...fixtures.autopilot }
+
+/** Test hook: put the mock autopilot back to the fixture. */
+export function resetMockState(): void {
+  autopilotState = { ...fixtures.autopilot }
+}
+
 const RUN_ID = fixtures.run.run_id
 const BATCH_ID = fixtures.batch.batch_id
 
@@ -118,8 +125,18 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ['GET', /^\/api\/reconciliation$/, () => ok(fixtures.reconciliation)],
   ['GET', /^\/api\/inbox$/, () => ok(fixtures.inbox)],
   ['POST', /^\/api\/inbox$/, () => (fixtures.inbox[0] ? ok(fixtures.inbox[0]) : noFixture('POST /api/inbox'))],
-  ['GET', /^\/api\/autopilot$/, () => ok(fixtures.autopilot)],
-  ['POST', /^\/api\/autopilot$/, () => ok(fixtures.autopilot)],
+  ['GET', /^\/api\/autopilot$/, () => ok(autopilotState)],
+  [
+    'POST',
+    /^\/api\/autopilot$/,
+    (_m, body) => {
+      // Mock-only state so the switch can be developed; resets on reload.
+      const b = body as { enabled?: unknown; lanes?: unknown } | undefined
+      if (typeof b?.enabled !== 'boolean') return fail(422, 'validation_error', 'enabled must be a boolean.')
+      autopilotState = { ...autopilotState, enabled: b.enabled, ...(Array.isArray(b.lanes) ? { lanes: b.lanes } : {}) }
+      return ok(autopilotState)
+    },
+  ],
   ['POST', /^\/api\/eval$/, () => ok(fixtures.evalJob)],
   ['GET', /^\/api\/eval\/([^/]+)$/, (m) => byId(m[1], fixtures.evalJob.job_id, fixtures.evalJob, 'eval job')],
 ]

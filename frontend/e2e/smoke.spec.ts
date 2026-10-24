@@ -18,9 +18,9 @@ const PAGES = [
   { path: '/', heading: 'Sig · AP clerk' },
   { path: '/runs/run-example-both/invoices/INV-003', heading: 'INV-003 · Cedar Grove Catering · $640.00' },
   { path: '/attack', heading: 'Write an invoice to fool Sig' },
-  { path: '/books', heading: 'Books' },
-  { path: '/proof', heading: 'Proof' },
-  { path: '/audit', heading: 'Audit' },
+  { path: '/books', heading: 'The books agree with the bank' },
+  { path: '/proof', heading: 'How we know it works' },
+  { path: '/audit', heading: 'Ask the auditor' },
 ]
 
 for (const { path, heading } of PAGES) {
@@ -47,11 +47,10 @@ for (const { path, heading } of PAGES) {
   }
 }
 
-test('pages not built yet say so through Sig, with no sample content', async ({ page }) => {
-  for (const path of ['/books', '/proof', '/audit']) {
-    await page.goto(path)
-    await expect(page.getByText(/^Not built yet\./)).toBeVisible()
-  }
+test('an unknown address says so through Sig', async ({ page }) => {
+  await page.goto('/no-such-page')
+  await expect(page.getByRole('heading', { level: 1, name: 'Not found' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'back to the console' })).toBeVisible()
 })
 
 test('header nav: six sections, health on the right', async ({ page }) => {
