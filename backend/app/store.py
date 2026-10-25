@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from app.contract_models import AgentTranscript, Autopilot, EvalJob, InboxItem, Person, PlannerTranscript, Run, RunEvent
+from app.contract_models import AgentTranscript, Autopilot, EvalJob, InboxItem, Person, PlannerTranscript, RedTeamJob, Run, RunEvent
 
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
@@ -49,6 +49,9 @@ _RECORD_TABLES = {
     "graphs": "graph_id",
     "transfers": "transfer_id",
     "redteam_jobs": "job_id",
+    "redteam_job_details": "job_id",
+    "redteam_variants": "variant_id",
+    "redteam_planner_cache": "cache_key",
     "eval_jobs": "job_id",
     "eval_receipts": "receipt_id",
     "eval_prior_paid": "prior_id",
@@ -200,6 +203,11 @@ class Store:
             if job.job_id != record_id:
                 raise ValueError("record_id must match job.job_id")
             data = job.model_dump(mode="json")
+        elif table == "redteam_jobs":
+            job = RedTeamJob.model_validate(record)
+            if job.job_id != record_id:
+                raise ValueError("record_id must match job.job_id")
+            data = job.model_dump(mode="json", exclude_none=True)
         elif table == "autopilot_state":
             state = Autopilot.model_validate({
                 key: value for key, value in dict(record).items() if key != "state_id"
@@ -686,6 +694,142 @@ class Store:
             for row in rows:
                 self._queue_audit_event(connection, _EVENT_ADAPTER.validate_json(row["data"]))
         return len(rows)
+
+    @staticmethod
+    def _validated_audit_snapshot(snapshot):
+        """Validate a finalized run's immutable, already-projected audit facts."""
+        from app.audit.events import EVENT_MAPPINGS
+
+        names = {"version", "run_id", "last_seq", "run", "rows", "snapshot_sha256"}
+        if (not isinstance(snapshot, dict) or set(snapshot) != names
+                or type(snapshot["version"]) is not int or snapshot["version"] != 1):
+            raise ValueError("Unsupported audit snapshot")
+        run = Run.model_validate(snapshot["run"])
+        if (run.run_id != snapshot["run_id"] or not run.lanes
+                or any(lane.status == "running" for lane in run.lanes)):
+            raise ValueError("Audit export requires a finalized source run")
+        rows = snapshot["rows"]
+        if (not isinstance(rows, list) or not rows or type(snapshot["last_seq"]) is not int
+                or snapshot["last_seq"] != len(rows)):
+            raise ValueError("Audit snapshot must contain the complete source sequence")
+        properties = EVENT_MAPPINGS["properties"]
+        for seq, row in enumerate(rows, 1):
+            if (not isinstance(row, dict) or set(row) != {"event_id", "run_id", "seq", "document"}
+                    or row["run_id"] != run.run_id or type(row["seq"]) is not int or row["seq"] != seq
+                    or row["event_id"] != f"{run.run_id}:{seq}"):
+                raise ValueError("Audit snapshot event identity is inconsistent")
+            document = row["document"]
+            if not isinstance(document, dict) or set(document) != set(properties):
+                raise ValueError("Audit snapshot projection does not match the explicit mapping")
+            event = _EVENT_ADAPTER.validate_python(document["payload"])
+            envelope = event.model_dump(mode="json", exclude_none=True)
+            if (event.run_id != run.run_id or event.seq != seq or envelope != document["payload"]
+                    or any(document[name] != envelope[name] for name in ("run_id", "seq", "ts", "lane", "type"))
+                    or document["mode"] != (envelope.get("mode") or "unknown")):
+                raise ValueError("Audit snapshot envelope and projection disagree")
+            for name, specification in properties.items():
+                value, kind = document[name], specification["type"]
+                if value is None or name == "payload":
+                    continue
+                if name == "reason_codes":
+                    valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
+                elif kind in {"keyword", "date"}:
+                    valid = isinstance(value, str)
+                elif kind == "long":
+                    valid = type(value) is int
+                elif kind == "boolean":
+                    valid = type(value) is bool
+                else:
+                    valid = False
+                if not valid:
+                    raise ValueError("Audit snapshot projection has an invalid field type")
+        if rows[-1]["document"]["type"] != "run.completed":
+            raise ValueError("Audit export requires the source run's final completion event")
+        identity = {key: snapshot[key] for key in ("version", "run_id", "last_seq", "run", "rows")}
+        encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        digest = hashlib.sha256(encoded.encode()).hexdigest()
+        if snapshot["snapshot_sha256"] != digest:
+            raise ValueError("Audit snapshot checksum does not match its immutable contents")
+        return run, digest
+
+    def export_audit_snapshot(self, run_id):
+        """Read a complete finalized case without recomputing its projections.
+
+        Call only after the owning RunManager has closed. Keeping source rows
+        untouched permits replay after a crash between the two SQLite stores.
+        """
+        with self.transaction() as connection:
+            run = self.get_run(run_id)
+            if run is None or not run.lanes or any(lane.status == "running" for lane in run.lanes):
+                raise ValueError("Audit export requires a finalized source run")
+            events = self.list_events(run_id)
+            records = connection.execute(
+                "SELECT event_id, run_id, seq, document, mapping_error FROM audit_outbox "
+                "WHERE run_id=? ORDER BY seq", (run_id,),
+            ).fetchall()
+            if len(records) != len(events) or not records or any(row["mapping_error"] for row in records):
+                raise ValueError("Source audit snapshots are incomplete or require projection repair")
+            rows = [{"event_id": row["event_id"], "run_id": row["run_id"], "seq": row["seq"],
+                     "document": json.loads(row["document"])} for row in records]
+            for event, row in zip(events, rows):
+                if event.model_dump(mode="json", exclude_none=True) != row["document"].get("payload"):
+                    raise ValueError("Source audit snapshot differs from its original event")
+            snapshot = {"version": 1, "run_id": run_id, "last_seq": rows[-1]["seq"],
+                        "run": run.model_dump(mode="json"), "rows": rows}
+            encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            snapshot["snapshot_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
+            self._validated_audit_snapshot(snapshot)
+            return snapshot
+
+    def import_audit_snapshot(self, snapshot):
+        """Atomically stage unchanged external projections and reserve their sequence.
+
+        No source entity or event is copied into local runtime tables. Existing
+        delivery tombstones stay acknowledged. A finalized import fingerprint
+        prevents a different history from later claiming the same run identity.
+        """
+        run, digest = self._validated_audit_snapshot(snapshot)
+        rows = snapshot["rows"]
+        manifest_key = "audit_import:" + run.run_id
+        manifest = {"snapshot_sha256": digest, "last_seq": snapshot["last_seq"], "event_count": len(rows)}
+        added = 0
+        with self.transaction() as connection:
+            local = self.get_run(run.run_id)
+            if local is not None and any(lane.status == "running" for lane in local.lanes):
+                raise ValueError("Cannot import audit history into an active local run")
+            existing_manifest = connection.execute("SELECT value FROM metadata WHERE key=?", (manifest_key,)).fetchone()
+            if existing_manifest is not None:
+                if json.loads(existing_manifest["value"]) != manifest:
+                    raise ValueError("Audit import conflicts with the run's immutable source snapshot")
+            elif self.audit_run_known(run.run_id):
+                raise ValueError("Audit import run identity already belongs to local history")
+            for row in rows:
+                encoded = json.dumps(row["document"], sort_keys=True, separators=(",", ":"), allow_nan=False)
+                existing = connection.execute(
+                    "SELECT run_id, seq, document, mapping_error FROM audit_outbox WHERE event_id=?",
+                    (row["event_id"],),
+                ).fetchone()
+                if existing is not None:
+                    if (existing["run_id"] != run.run_id or existing["seq"] != row["seq"]
+                            or existing["mapping_error"] or json.loads(existing["document"]) != row["document"]):
+                        raise ValueError("Audit event identity collision; existing history was not overwritten")
+                    continue
+                connection.execute(
+                    "INSERT INTO audit_outbox (event_id, run_id, seq, document, mapping_error) VALUES (?, ?, ?, ?, NULL)",
+                    (row["event_id"], run.run_id, row["seq"], encoded),
+                )
+                added += 1
+            connection.execute(
+                "INSERT INTO audit_event_sequences (run_id, last_seq) VALUES (?, ?) "
+                "ON CONFLICT(run_id) DO UPDATE SET last_seq=MAX(last_seq, excluded.last_seq)",
+                (run.run_id, snapshot["last_seq"]),
+            )
+            connection.execute("INSERT OR IGNORE INTO metadata (key, value) VALUES (?, ?)",
+                               (manifest_key, json.dumps(manifest, sort_keys=True, separators=(",", ":"))))
+        return {"run_id": run.run_id, **manifest, "queued": added, "already_present": len(rows) - added,
+                "destination_pending": self.audit_pending_count(run.run_id), "status": "staged",
+                "elastic_delivery_verified": False}
+
 
     def pending_audit(self, limit=100, run_id=None):
         if type(limit) is not int or limit < 1:

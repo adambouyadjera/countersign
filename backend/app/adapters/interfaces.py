@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from app.adapters.bank import BankActivity, BankBalance, BankTransfer
@@ -88,4 +89,23 @@ class AgentLLM(ServiceAdapter, Protocol):
 
 @runtime_checkable
 class MutatorLLM(ServiceAdapter, Protocol):
+    model: str
+
     async def mutate(self, *, template: str, placement: Placement) -> str: ...
+
+    async def generate_variants(self, *, template: str, count: int,
+                                placements: list[Placement] | None = None,
+                                diversity_schedule: list[dict[str, str]] | None = None,
+                                ) -> list[GeneratedAttackVariant]: ...
+
+
+@dataclass(frozen=True)
+class GeneratedAttackVariant:
+    """Internal generation result; the runner supplies outcome and variant IDs."""
+
+    text: str
+    placement: Placement
+    template: str
+    mutator_model: str
+    provider: str
+    diversity: dict[str, str]

@@ -59,7 +59,7 @@ async def test_invalid_or_truncated_generation_raises_without_hardcoded_fallback
     client = client_for(content, finish=finish, reasoning=json.dumps({'attack_text': VALID}))
     with pytest.raises(MutatorError):
         await adapter_for(client).mutate(template='hidden_white_text', placement='hidden_white_text')
-    client.chat.completions.create.assert_awaited_once()
+    assert client.chat.completions.create.await_count == 3
 
 
 @pytest.mark.asyncio
