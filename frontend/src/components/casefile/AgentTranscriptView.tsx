@@ -1,5 +1,6 @@
 import type { AgentTranscript } from '@/api/types'
 import { InkRow } from '@/components/ui'
+import { maskCanary } from '@/lib/canary'
 
 /** The unguarded lane: what the agent said and did, from GET .../agent_transcript. */
 export function AgentTranscriptView({ transcript }: { transcript: AgentTranscript }) {
@@ -17,18 +18,18 @@ export function AgentTranscriptView({ transcript }: { transcript: AgentTranscrip
               {s.args && (
                 <pre className="m-0 font-mono text-meta break-all whitespace-pre-wrap text-fg">
                   {Object.entries(s.args)
-                    .map(([k, v]) => `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+                    .map(([k, v]) => maskCanary(`${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`))
                     .join('\n')}
                 </pre>
               )}
               {s.result && (
-                <pre className="m-0 mt-1 font-mono text-meta break-all whitespace-pre-wrap text-muted">↳ {s.result}</pre>
+                <pre className="m-0 mt-1 font-mono text-meta break-all whitespace-pre-wrap text-muted">↳ {maskCanary(s.result)}</pre>
               )}
             </InkRow>
           ) : (
             <li key={i} data-step="message" className="grid grid-cols-[7ch_minmax(0,1fr)]">
               <span className="text-claim">agent</span>
-              <p className="m-0 whitespace-pre-wrap">{s.text}</p>
+              <p className="m-0 whitespace-pre-wrap">{s.text && maskCanary(s.text)}</p>
             </li>
           ),
         )}

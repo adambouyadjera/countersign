@@ -47,7 +47,7 @@ function CaseFilesLink() {
 const NAV = [
   { to: '/attack', label: 'attack lab' },
   { to: '/books', label: 'books' },
-  { to: '/proof', label: 'proof' },
+  { to: '/eval', label: 'eval' },
   { to: '/audit', label: 'audit' },
 ] as const
 
@@ -88,7 +88,7 @@ export function AppShell() {
           ))}
         </nav>
         {/* The case file mockup's header has no autopilot status; it shows who you act as. */}
-        {!onCase && !redTeam && <AutopilotStatus interactive={pathname === '/console'} />}
+        {!onCase && !redTeam && <AutopilotStatus interactive />}
         <QueueDrawer />
         <MockBadge />
         {onCase && <ActingAs className="ml-auto" />}

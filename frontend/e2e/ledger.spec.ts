@@ -13,15 +13,19 @@ test('books: balanced and reconciled per the API, so Sig is pleased', async ({ p
   await expect(page.getByRole('list', { name: 'Journal entries' }).getByRole('listitem')).toHaveCount(10)
 })
 
-test('proof: tiles start empty and fill from the eval and red-team jobs', async ({ page }) => {
-  await page.goto('/proof')
+test('eval: recorded before/after results, and a new run that fills its own tiles', async ({ page }) => {
+  await page.goto('/eval')
   await expect(page.locator('[data-expression="honest"]')).toBeVisible()
+  await expect(page.getByTestId('recorded-score-0')).toHaveText('38 / 40')
+  await expect(page.getByTestId('recorded-score-1')).toHaveText('40 / 40')
+  await expect(page.getByTestId('answer-key-note')).toContainText('committed before the first run')
   await expect(page.getByTestId('kpi-matches')).toHaveText('—')
-  await page.getByRole('button', { name: 'run the answer-key eval' }).click()
+  await page.getByRole('button', { name: 'Run eval (new run)' }).click()
   await expect(page.getByTestId('kpi-matches')).toHaveText('5 / 5')
   await expect(page.getByText('completed · 5 / 5')).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Misses' })).toHaveCount(0)
-  await expect(page.getByText('None in this run.')).toBeVisible()
+  const card = page.getByRole('region', { name: 'New eval run' })
+  await expect(card.getByRole('list', { name: 'Misses' })).toHaveCount(0)
+  await expect(card.getByText('No misses.')).toBeVisible()
   await page.getByRole('button', { name: 'Run 40 new variants' }).click()
   await expect(page.getByTestId('kpi-fooled')).toHaveText('8 / 10')
   await expect(page.getByTestId('distinct-prompts')).toHaveText('1')
@@ -50,13 +54,12 @@ test('console header: the autopilot switch flips via POST /api/autopilot', async
   await expect(sw).toHaveAttribute('aria-checked', 'false')
   await sw.click()
   await expect(sw).toHaveAttribute('aria-checked', 'true')
-  // Off the console it is read-only and agrees.
+  // It is the same header switch on every page, and agrees after navigating.
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'books' }).click()
-  await expect(page.getByTestId('autopilot')).toHaveText('autopilot on')
-  await expect(page.getByRole('switch')).toHaveCount(0)
+  await expect(page.getByRole('switch', { name: 'autopilot' })).toHaveAttribute('aria-checked', 'true')
 })
 
-for (const path of ['/books', '/proof', '/audit']) {
+for (const path of ['/books', '/eval', '/audit']) {
   test(`${path} fits 1280x720 and 1920x1080`, async ({ page }) => {
     for (const vp of [
       { width: 1280, height: 720 },

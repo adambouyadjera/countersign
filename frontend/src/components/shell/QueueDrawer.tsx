@@ -4,7 +4,9 @@ import { isApiError } from '@/api/errors'
 import { RequestError } from '@/components/console/RequestError'
 import { Card, InkButton, InkRow } from '@/components/ui'
 import { chipClass } from '@/components/ui/chipStyle'
+import { CountersignActions } from '@/components/casefile/CountersignActions'
 import { usePendingApprovals } from '@/hooks/queries'
+import { useActingAs } from '@/hooks/useActingAs'
 import { maskAccount } from '@/lib/account'
 import { cn } from '@/lib/cn'
 import { formatCents } from '@/lib/money'
@@ -13,6 +15,7 @@ import { ROLE_LABEL } from '@/lib/roles'
 /** Header button with the pending-approval count, and the drawer listing them (GET /api/approvals?status=pending). */
 export function QueueDrawer() {
   const q = usePendingApprovals()
+  const { people, person } = useActingAs()
   const [open, setOpen] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -103,6 +106,10 @@ export function QueueDrawer() {
                     <p className="m-0 font-mono text-meta text-muted">
                       {a.reason_codes.join(', ')} · needs {ROLE_LABEL[a.required_role]} · {a.created_at}
                     </p>
+                    {/* The vendor id isn't on Approval; the case file and console link to the vendor record. */}
+                    <div className="mt-2.5">
+                      <CountersignActions approval={a} people={people.data ?? []} defaultActorId={person?.person_id} />
+                    </div>
                   </Card>
                 ))}
               </ul>

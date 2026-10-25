@@ -24,6 +24,8 @@ export interface InboxColumnProps {
   totals: InboxTotals | null
   /** Run controls, under the invoice list. */
   controls?: ReactNode
+  /** The AP mailbox panel, under the controls. */
+  mail?: ReactNode
 }
 
 const GLYPH: Record<InvoiceStatus | 'none', { glyph: string; tone: string; word: string }> = {
@@ -38,7 +40,7 @@ const GLYPH: Record<InvoiceStatus | 'none', { glyph: string; tone: string; word:
   failed: { glyph: '!', tone: 'text-bad', word: 'failed' },
 }
 
-export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, totals, controls }: InboxColumnProps) {
+export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, totals, controls, mail }: InboxColumnProps) {
   return (
     <Card
       as="aside"
@@ -98,6 +100,7 @@ export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, t
       )}
 
       {controls && <div className="mt-3 flex flex-wrap gap-2">{controls}</div>}
+      {mail}
 
       <div className="mt-auto pt-4 text-meta leading-[1.8] text-muted" aria-label="Totals for this run">
         {totals ? (

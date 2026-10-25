@@ -8,6 +8,7 @@ import { BankChangePage } from '@/routes/BankChangePage'
 import { BooksPage } from '@/routes/BooksPage'
 import { NotFoundPage } from '@/routes/placeholders'
 import { ProofPage } from '@/routes/ProofPage'
+import { VendorPage } from '@/routes/VendorPage'
 
 export const router = createBrowserRouter([
   {
@@ -20,7 +21,9 @@ export const router = createBrowserRouter([
       { path: '/bank-change', element: <BankChangePage /> },
       { path: '/attack', element: <AttackLabPage /> },
       { path: '/books', element: <BooksPage /> },
-      { path: '/proof', element: <ProofPage /> },
+      { path: '/vendors/:vendorId', element: <VendorPage /> },
+      { path: '/eval', element: <ProofPage /> },
+      { path: '/proof', element: <Navigate to="/eval" replace /> },
       { path: '/audit', element: <AuditPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

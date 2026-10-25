@@ -3,6 +3,7 @@ import { documentPdfUrl } from '@/api/client'
 import type { DocumentText, SourceSpan } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { marksByLine, splitLine, type LineMark } from '@/lib/caseFile'
+import { maskCanary } from '@/lib/canary'
 import { isMockMode } from '@/lib/env'
 
 export interface DocumentViewerProps {
@@ -50,7 +51,7 @@ export function DocumentViewer({ doc, spans, selected }: DocumentViewerProps) {
                   {doc.pages.length > 1 ? `${page.page}.${l.line}` : l.line}
                 </span>
                 <span className="min-w-0 break-words">
-                  {splitLine(l.text, lineMarks).map((p, i) =>
+                  {splitLine(maskCanary(l.text), lineMarks).map((p, i) =>
                     p.kind === 'field' ? (
                       <span
                         key={i}

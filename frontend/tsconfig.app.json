@@ -20,7 +20,7 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
     "resolveJsonModule": true,
-    "paths": { "@/*": ["src/*"], "@fixtures/*": ["../contracts/fixtures/*"] }
+    "paths": { "@/*": ["src/*"], "@fixtures/*": ["../contracts/fixtures/*"], "@evidence/*": ["../backend/docs/*"] }
   },
   "include": ["src"]
 }

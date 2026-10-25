@@ -20,7 +20,8 @@ const PAGES = [
   { path: '/runs/run-example-both/invoices/INV-003', heading: 'INV-003 · Cedar Grove Catering · $640.00' },
   { path: '/attack', heading: 'Write an invoice to fool Sig' },
   { path: '/books', heading: 'The books agree with the bank' },
-  { path: '/proof', heading: 'How we know it works' },
+  { path: '/vendors/VEN-003', heading: 'Cedar Grove Catering' },
+  { path: '/eval', heading: 'How we know it works' },
   { path: '/audit', heading: 'Ask the auditor' },
 ]
 
@@ -63,7 +64,7 @@ test('/ opens the bank-change screen', async ({ page }) => {
 test('header nav: seven sections, health on the right', async ({ page }) => {
   await page.goto('/console')
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav).toHaveText(/Bank-change letter\s*console\s*case files\s*attack lab\s*books\s*proof\s*audit/)
+  await expect(nav).toHaveText(/Bank-change letter\s*console\s*case files\s*attack lab\s*books\s*eval\s*audit/)
   await expect(nav.getByRole('link', { name: 'console' })).toHaveAttribute('aria-current', 'page')
   await nav.getByRole('link', { name: 'books' }).click()
   await expect(page).toHaveURL(/\/books$/)

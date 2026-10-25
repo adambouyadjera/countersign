@@ -206,11 +206,14 @@ export function CaseFilePage() {
           <Card label={`vendor history${invoice ? ` · ${invoice.vendor_name}` : ''}`} className="flex flex-col p-4">
             {invoice ? (
               <QueryView query={vendor} what="the vendor history" endpoint={`GET /api/vendors/${invoice.vendor_id}`}>
-                {(v) =>
-                  endIso ? (
-                    <VendorStrip vendor={v} people={people.data ?? []} endIso={endIso} requestedAccount={requestedAccount} />
-                  ) : null
-                }
+                {(v) => (
+                  <>
+                    {endIso && <VendorStrip vendor={v} people={people.data ?? []} endIso={endIso} requestedAccount={requestedAccount} />}
+                    <Link to={`/vendors/${encodeURIComponent(v.vendor_id)}`} className="mt-2 self-start font-mono text-small text-accent">
+                      vendor record →
+                    </Link>
+                  </>
+                )}
               </QueryView>
             ) : (
               <p className="m-0 mt-2 text-small text-muted">Needs the invoice's vendor (GET /api/runs, /api/batches).</p>
@@ -221,7 +224,7 @@ export function CaseFilePage() {
             <QueryView query={approvals} what="approvals" endpoint="GET /api/approvals">
               {() =>
                 approval ? (
-                  <CountersignActions approval={approval} actor={person} people={people.data ?? []} />
+                  <CountersignActions approval={approval} people={people.data ?? []} defaultActorId={person?.person_id} />
                 ) : (
                   <p className="m-0 text-small text-muted">
                     Nothing to countersign: no approval for this invoice in this run.

@@ -108,6 +108,11 @@ export function useInbox(enabled: boolean) {
   return useQuery({ queryKey: ['inbox'], queryFn: listInboxItems, enabled, refetchInterval: enabled ? 2_000 : false, retry: false })
 }
 
+/** GET /api/inbox for the console's mail panel: every 2 s while autopilot is on, else every 10 s. */
+export function useInboxList(fast: boolean) {
+  return useQuery({ queryKey: ['inbox'], queryFn: listInboxItems, refetchInterval: fast ? 2_000 : 10_000, retry: false })
+}
+
 export function useTrialBalance() {
   return useQuery({ queryKey: ['ledger', 'trial_balance'], queryFn: getTrialBalance, retry: false })
 }

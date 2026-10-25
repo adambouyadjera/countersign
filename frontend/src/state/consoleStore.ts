@@ -17,6 +17,10 @@ interface ConsoleStore {
   focusedInvoiceId: string | null
   setBatch: (batch: Batch) => void
   setRun: (run: Run) => void
+  /** Watch a run together with the batch it actually processes (e.g. the autopilot run's aggregate batch). */
+  openRun: (batch: Batch, run: Run) => void
+  /** A newer copy of the same batch (an autopilot batch grows as inbox items arrive); keeps the run. */
+  refreshBatch: (batch: Batch) => void
   selectInvoice: (invoiceId: string | null) => void
   setFocused: (invoiceId: string | null) => void
   clear: () => void
@@ -30,6 +34,8 @@ export const useConsoleStore = create<ConsoleStore>()((set) => ({
   focusedInvoiceId: null,
   setBatch: (batch) => set({ batch, run: null, selectedInvoiceId: null }),
   setRun: (run) => set((s) => ({ run, runNonce: s.runNonce + 1, selectedInvoiceId: null })),
+  openRun: (batch, run) => set((s) => ({ batch, run, runNonce: s.runNonce + 1, selectedInvoiceId: null })),
+  refreshBatch: (batch) => set((s) => (s.batch?.batch_id === batch.batch_id ? { batch } : {})),
   selectInvoice: (selectedInvoiceId) => set({ selectedInvoiceId }),
   setFocused: (focusedInvoiceId) => set({ focusedInvoiceId }),
   clear: () => set({ batch: null, run: null, selectedInvoiceId: null }),

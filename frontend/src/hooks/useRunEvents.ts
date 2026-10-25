@@ -2,6 +2,7 @@ import { useEffect, useReducer } from 'react'
 import { runEventsUrl } from '@/api/client'
 import { EVENT_SOURCE_CLOSED, getTransport, type RunEventSource } from '@/api/transport'
 import { RUN_EVENT_TYPES, type RunEvent } from '@/api/types'
+import { maskCanary } from '@/lib/canary'
 import { initialRunState, runReducer, type RunState } from '@/state/runReducer'
 
 export type StreamStatus = 'idle' | 'connecting' | 'open' | 'reconnecting'
@@ -73,7 +74,7 @@ export function useRunEvents(runId: string | null, session = 0): RunEventsResult
     const onMessage = (msg: MessageEvent<string>) => {
       let event: RunEvent
       try {
-        event = JSON.parse(msg.data) as RunEvent
+        event = JSON.parse(maskCanary(msg.data)) as RunEvent
       } catch {
         dispatch({ type: 'malformed', key })
         return

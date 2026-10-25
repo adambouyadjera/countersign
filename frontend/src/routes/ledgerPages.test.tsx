@@ -8,6 +8,8 @@ import approvalsFixture from '@fixtures/approvals.json'
 import auditFixture from '@fixtures/audit_answer.json'
 import autopilotFixture from '@fixtures/autopilot.json'
 import evalFixture from '@fixtures/eval_job.json'
+import { job as recordedBefore } from '@evidence/eval_results.json'
+import { job as recordedAfter } from '@evidence/eval_results_after_semantic.json'
 import healthFixture from '@fixtures/health.json'
 import ledgerFixture from '@fixtures/ledger_entries.json'
 import peopleFixture from '@fixtures/people.json'
@@ -48,6 +50,13 @@ const m = vi.mocked(client)
 type R<F extends (...a: never[]) => unknown> = Awaited<ReturnType<F>>
 const evalJob = evalFixture as EvalJob
 const redteam = redteamFixture as RedTeamJob
+// The two recorded jobs as GET /api/eval/{id} returns them on the real backend.
+const RECORDED: Record<string, EvalJob> = {
+  [recordedBefore.job_id]: recordedBefore as EvalJob,
+  [recordedAfter.job_id]: recordedAfter as EvalJob,
+}
+/** getEvalJob that serves the recorded jobs by id and `next()` for anything else. */
+const evalById = (next: () => EvalJob) => async (id: string) => RECORDED[id] ?? next()
 const notFound = () => new ApiError({ status: 404, code: 'not_found', message: 'nope', envelope: true })
 
 function renderIt(ui: ReactNode) {
@@ -81,6 +90,9 @@ describe('<BooksPage>', () => {
     expect(screen.getByTestId('books-verdict')).toHaveTextContent('Every dollar I moved has a journal entry')
     expect(document.querySelector('[data-expression="pleased"]')).toBeInTheDocument()
     expect(screen.getByTestId('tb-total')).toHaveTextContent('Total26,040.0026,040.00')
+    expect(screen.getByTestId('recon-basis')).toHaveTextContent(
+      'Reconciled against submitted transfers (Nessie sandbox transfers stay pending)',
+    )
     expect(screen.getByTestId('recon-bank')).toHaveTextContent('9 · $6,040')
     expect(screen.getByTestId('recon-ledger')).toHaveTextContent('9 · $6,040')
   })
@@ -148,7 +160,7 @@ describe('<ProofPage>', () => {
     expect(screen.getByTestId('kpi-fooled')).toHaveTextContent('—')
     expect(document.querySelector('[data-expression="honest"]')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'run the answer-key eval' }))
+    await user.click(screen.getByRole('button', { name: 'Run eval (new run)' }))
     expect(m.createEvalJob).toHaveBeenCalledWith({ suite: 'planted_errors_v1' })
     await waitFor(() => expect(screen.getByTestId('kpi-matches')).toHaveTextContent('5 / 5'))
     expect(screen.getByTestId('kpi-unauthorized')).toHaveTextContent('0')
@@ -165,13 +177,18 @@ describe('<ProofPage>', () => {
 
   it('polls a running job and shows real progress', async () => {
     useProofStore.setState({ evalJobId: evalJob.job_id })
-    m.getEvalJob
-      .mockResolvedValueOnce({ ...evalJob, status: 'running', progress: { completed: 2, total: 5 }, items: evalJob.items.slice(0, 2), metrics: undefined })
-      .mockResolvedValue(evalJob)
+    let calls = 0
+    m.getEvalJob.mockImplementation(
+      evalById(() =>
+        calls++ === 0
+          ? { ...evalJob, status: 'running', progress: { completed: 2, total: 5 }, items: evalJob.items.slice(0, 2), metrics: undefined }
+          : evalJob,
+      ),
+    )
     renderIt(<ProofPage />)
     expect(await screen.findByText('running · 2 / 5')).toBeInTheDocument()
     expect(await screen.findByText('completed · 5 / 5', {}, { timeout: 4000 })).toBeInTheDocument()
-    expect(m.getEvalJob.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(m.getEvalJob.mock.calls.filter(([id]) => id === evalJob.job_id).length).toBeGreaterThanOrEqual(2)
   })
 
   it('lists misses instead of hiding them', async () => {
@@ -184,18 +201,49 @@ describe('<ProofPage>', () => {
       metrics: { ...evalJob.metrics!, by_error_type: { ...evalJob.metrics!.by_error_type, amount_mismatch: { caught: 0, missed: 1 } } },
     })
     renderIt(<ProofPage />)
-    const misses = await screen.findByRole('list', { name: 'Misses' })
+    const card = screen.getByRole('region', { name: 'New eval run' })
+    const misses = await within(card).findByRole('list', { name: 'Misses' })
     expect(misses).toHaveTextContent('EVAL-003 · amount_mismatch · expected HOLD (AMOUNT_MISMATCH) · got PAY')
-    expect(screen.getByRole('link', { name: '1 · view' })).toHaveAttribute('href', '#miss-amount_mismatch')
+    expect(within(card).getByRole('link', { name: '1 · view' })).toHaveAttribute('href', '#new-miss-amount_mismatch')
     expect(screen.getByTestId('kpi-matches')).toHaveTextContent('4 / 5')
+  })
+
+  it('shows both recorded results side by side, read from GET /api/eval/{job_id}', async () => {
+    m.getEvalJob.mockImplementation(evalById(() => evalJob))
+    renderIt(<ProofPage />)
+    const before = await screen.findByRole('region', { name: 'v1 policy (before fix)' })
+    const after = await screen.findByRole('region', { name: 'after semantic duplicate check' })
+    expect(m.getEvalJob).toHaveBeenCalledWith(recordedBefore.job_id)
+    expect(m.getEvalJob).toHaveBeenCalledWith(recordedAfter.job_id)
+    expect(within(before).getByTestId('recorded-score-0')).toHaveTextContent('38 / 40')
+    expect(within(after).getByTestId('recorded-score-1')).toHaveTextContent('40 / 40')
+    expect(within(before).getByTestId('recorded-false-holds-0')).toHaveTextContent('0 / 12')
+    expect(within(after).getByTestId('recorded-false-holds-1')).toHaveTextContent('0 / 12')
+    expect(within(before).getByTestId('recorded-unauthorized-0')).toHaveTextContent('2')
+    expect(before.querySelector('[data-error-type="duplicate_invoice"]')).toHaveTextContent('3 / 5')
+    expect(after.querySelector('[data-error-type="duplicate_invoice"]')).toHaveTextContent('5 / 5')
+    expect(within(before).getByRole('list', { name: 'Misses' })).toHaveTextContent('PE-022')
+    expect(screen.getByTestId('answer-key-note')).toHaveTextContent('The answer key was committed before the first run')
+    expect(screen.getByTestId('answer-key-note')).toHaveTextContent('Both runs scored the same 40 invoices.')
+    // A new run is labelled as one and leaves the recorded cards alone.
+    expect(screen.getByRole('button', { name: 'Run eval (new run)' })).toBeInTheDocument()
+  })
+
+  it('says a recorded run is not available when the API does not have it', async () => {
+    m.getEvalJob.mockRejectedValue(notFound())
+    renderIt(<ProofPage />)
+    const missing = await screen.findAllByTestId('not-available')
+    expect(missing[0]).toHaveTextContent(`GET /api/eval/${recordedBefore.job_id} → 404 not_found`)
   })
 
   it('says "not available yet" when the eval endpoint is a 404', async () => {
     m.createEvalJob.mockRejectedValue(notFound())
+    m.getEvalJob.mockImplementation(evalById(() => evalJob))
     const user = userEvent.setup()
     renderIt(<ProofPage />)
-    await user.click(screen.getByRole('button', { name: 'run the answer-key eval' }))
-    expect(await screen.findByTestId('not-available')).toHaveTextContent('POST /api/eval → 404 not_found')
+    await user.click(screen.getByRole('button', { name: 'Run eval (new run)' }))
+    const card = screen.getByRole('region', { name: 'New eval run' })
+    expect(await within(card).findByTestId('not-available')).toHaveTextContent('POST /api/eval → 404 not_found')
     expect(screen.getByTestId('kpi-matches')).toHaveTextContent('—')
   })
 })
@@ -237,7 +285,7 @@ describe('<AuditPage>', () => {
 })
 
 describe('<AutopilotStatus interactive>', () => {
-  it('is a switch that POSTs the opposite state, keeping the lanes', async () => {
+  it('is a switch that POSTs the opposite state, always with both lanes', async () => {
     m.getAutopilot.mockResolvedValue({ ...autopilotFixture, enabled: false } as R<typeof client.getAutopilot>)
     m.setAutopilot.mockResolvedValue({ ...autopilotFixture, enabled: true } as R<typeof client.setAutopilot>)
     const user = userEvent.setup()
@@ -245,7 +293,7 @@ describe('<AutopilotStatus interactive>', () => {
     const sw = await screen.findByRole('switch', { name: 'autopilot' })
     expect(sw).toHaveAttribute('aria-checked', 'false')
     await user.click(sw)
-    expect(m.setAutopilot).toHaveBeenCalledWith({ enabled: true, lanes: ['countersign'] })
+    expect(m.setAutopilot).toHaveBeenCalledWith({ enabled: true, lanes: ['countersign', 'unguarded'] })
     await waitFor(() => expect(sw).toHaveAttribute('aria-checked', 'true'))
   })
 
