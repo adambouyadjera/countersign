@@ -556,12 +556,24 @@ class ReconciliationItem(ContractModel):
     note: str = OptionalField()
 
 
+class ReconciliationExclusion(ContractModel):
+    """Activity left out of the difference on purpose, reported with every ID so nothing is hidden."""
+    reason: Literal["unguarded_lane", "before_books_started"]
+    label: str
+    side: Literal["bank", "ledger"]
+    count: StrictInt
+    amount_cents: StrictInt
+    transfer_ids: list[str]
+
+
 class Reconciliation(ContractModel):
     as_of: Timestamp
     bank_balance_change_cents: StrictInt
     ledger_cash_change_cents: StrictInt
     difference_cents: StrictInt
     items: list[ReconciliationItem]
+    scope: Literal["countersign_lane"] = OptionalField()
+    excluded: list[ReconciliationExclusion] = OptionalField()
 
 
 class InboxRequest(ContractModel):

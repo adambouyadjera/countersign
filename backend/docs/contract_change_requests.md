@@ -245,3 +245,22 @@ Paying a stale hold still returns HTTP 409 with the existing error envelope and
 message `This hold is from an earlier server session; re-run the batch to approve.`
 Missing/mismatched original authority remains blocked. No field, role, limit,
 SoD requirement or existing valid approval path is removed.
+
+## Cleanup item 5 — reconciliation scope and exclusions
+
+Add optional `Reconciliation.scope?: "countersign_lane"` and
+`Reconciliation.excluded?: ReconciliationExclusion[]`, where
+`ReconciliationExclusion = { reason: "unguarded_lane" | "before_books_started";
+label: string; side: "bank" | "ledger"; count: integer; amount_cents: integer;
+transfer_ids: string[] }`.
+
+`difference_cents` now compares Countersign's ledger with Countersign-lane bank
+movements. Unguarded-lane transfers (bank side) and their journal entries
+(ledger side) are excluded from the difference and reported as
+`unguarded_lane` groups. Current-session transfers submitted before the
+reconciliation baseline was captured, with no journal entry, are reported as
+`before_books_started` (label "before books started"). Every excluded transfer
+ID is listed. Bank activity this application never submitted is not excluded:
+it stays `bank_only` and counts toward the difference. Existing fields, item
+statuses and notes are unchanged; the trial balance still includes every
+booked payment from both lanes.

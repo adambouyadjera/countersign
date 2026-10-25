@@ -10,7 +10,13 @@
     },
     "InboxItem": {
       "source": {"default": "inbox", "enum": ["inbox", "attack_lab"], "title": "Source", "type": "string"}
+    },
+    "Reconciliation": {
+      "scope": {"const": "countersign_lane", "title": "Scope", "type": "string"},
+      "excluded": {"items": {"$ref": "#/components/schemas/ReconciliationExclusion"}, "title": "Excluded", "type": "array"}
     }
   },
-  "schemas": {}
+  "schemas": {
+    "ReconciliationExclusion": {"additionalProperties": false, "description": "Activity left out of the difference on purpose, reported with every ID so nothing is hidden.", "properties": {"reason": {"enum": ["unguarded_lane", "before_books_started"], "title": "Reason", "type": "string"}, "label": {"title": "Label", "type": "string"}, "side": {"enum": ["bank", "ledger"], "title": "Side", "type": "string"}, "count": {"title": "Count", "type": "integer"}, "amount_cents": {"title": "Amount Cents", "type": "integer"}, "transfer_ids": {"items": {"type": "string"}, "title": "Transfer Ids", "type": "array"}}, "required": ["reason", "label", "side", "count", "amount_cents", "transfer_ids"], "title": "ReconciliationExclusion", "type": "object"}
+  }
 }

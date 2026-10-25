@@ -84,3 +84,23 @@ amount authorization. Stale payment decisions retain a clear 409; missing or
 mismatched context remains blocked. Staleness is computed, not trusted from a
 stored flag. Rejection is recorded in approval/audit history without creating
 a monetary journal for a held bill that was never posted.
+
+## Item 5 — reconciliation difference
+
+Reproduced against a read-only copy of the running database
+(`backend/data/countersign.db`) and the live `GET /api/reconciliation`:
+difference -4,022,000 cents with 50 matched and 60 `bank_only` items.
+Of the 60: 29 unguarded-lane and 1 Countersign-lane transfers were made in the
+current session between 20:51 and 21:28 UTC, before the baseline was captured
+at 22:01 (books started) and never booked; 30 were not submitted by this
+database at all (other processes paying from the same Nessie company account).
+All 50 matched items were unguarded-lane payments: the bookkeeper books both
+lanes, so the difference was mixing the comparison lane into Countersign's
+books.
+
+The reconciler now compares Countersign's ledger with Countersign-lane
+transfers only, reports the unguarded lane and pre-ledger transfers as counted,
+labelled exclusions with every ID, and keeps unknown bank activity in the
+difference. `tests/test_reconciliation.py` reproduces both causes on the
+committed code (-604,000 vs -270,000 for a two-lane run; -333 for a pre-ledger
+transfer) and passes after the change.
