@@ -189,6 +189,10 @@ export function BooksPage() {
           </SigSays>
 
           <Card label="bank reconciliation" className="flex flex-col p-[18px]">
+            {/* The backend reconciles the submitted-payment register, pending items included; it is not settlement. */}
+            <p data-testid="recon-basis" className="m-0 mb-2 text-small text-muted">
+              Reconciled against submitted transfers (Nessie sandbox transfers stay pending)
+            </p>
             <QueryView query={rec} what="the reconciliation" endpoint="GET /api/reconciliation">
               {(r) => {
                 const s = reconSummary(r)
@@ -196,7 +200,7 @@ export function BooksPage() {
                   <>
                     <div className="mt-3 grid grid-cols-2 gap-2.5">
                       <div>
-                        <div className="text-meta text-muted">Nessie withdrawals</div>
+                        <div className="text-meta text-muted">Submitted transfers</div>
                         <div className="font-mono text-[1.286rem] font-bold" data-testid="recon-bank">
                           {s.bank.count} · {formatCentsShort(s.bank.cents)}
                         </div>

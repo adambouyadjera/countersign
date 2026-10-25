@@ -7,7 +7,8 @@ import { RequestError } from '@/components/console/RequestError'
 import { SigSays } from '@/components/sig'
 import { Card, CardLabel, InkButton } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { errorTypeRows, jobDone, proofKpis, redteamMarks, type MarkTone } from '@/lib/proof'
+import { EvalTable, MissList, RecordedEvals } from '@/components/proof/RecordedEval'
+import { jobDone, proofKpis, redteamMarks, type MarkTone } from '@/lib/proof'
 import { useProofStore } from '@/state/proofStore'
 
 const POLL_MS = 2_000
@@ -96,7 +97,6 @@ export function ProofPage() {
   const ev = evalQ.data
   const rt = redQ.data
   const k = proofKpis(ev, rt)
-  const rows = ev ? errorTypeRows(ev) : []
   const misses = ev?.items.filter((i) => !i.passed) ?? []
   const evalRunning = Boolean(ev && !jobDone(ev))
   const redRunning = Boolean(rt && !jobDone(rt))
@@ -116,6 +116,12 @@ export function ProofPage() {
         </div>
       </div>
 
+      <RecordedEvals />
+
+      <h2 className="display m-0 px-7 pt-5 text-big">New run</h2>
+      <p className="m-0 px-7 text-small text-muted">
+        Starts a fresh POST /api/eval job (polled every 2 s) and a red-team job. These tiles are that new run only.
+      </p>
       <div className="grid grid-cols-4 gap-3.5 px-7 py-3.5">
         <Tile label="Matches the answer key" testId="kpi-matches">
           {k.matches ? `${k.matches.value} / ${k.matches.of}` : dash}
@@ -132,67 +138,29 @@ export function ProofPage() {
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_clamp(22rem,30vw,32.86rem)] items-start gap-[18px] px-7 pt-2 pb-7">
-        <Card as="section" aria-label="Answer key results" className="flex flex-col gap-3 overflow-x-auto p-[18px]">
+        <Card as="section" aria-label="New eval run" className="flex flex-col gap-3 overflow-x-auto p-[18px]">
           <div className="flex flex-wrap items-center gap-3">
-            <CardLabel>by planted error</CardLabel>
+            <CardLabel>new run · by planted error</CardLabel>
+            {ev && <span className="font-mono text-meta text-muted">job {ev.job_id}</span>}
             <InkButton size="sm" className="ml-auto" onClick={() => startEval.mutate()} disabled={startEval.isPending || evalRunning}>
-              {ev ? 'run the eval again' : 'run the answer-key eval'}
+              Run eval (new run)
             </InkButton>
           </div>
           {startEval.isError && <SendError error={startEval.error} endpoint="POST /api/eval" />}
           {evalQ.isError && <SendError error={evalQ.error} endpoint={`GET /api/eval/${evalJobId}`} />}
           {ev && <Progress job={ev} what="Eval" />}
           {!ev ? (
-            <p className="m-0 text-small text-muted">No eval run yet. The numbers above fill in from the job.</p>
+            <p className="m-0 text-small text-muted">No new run yet. The recorded results above are unaffected by a new run.</p>
           ) : (
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b-2 border-ink text-left text-muted">
-                  <th className="px-1.5 py-2 font-medium">Planted error</th>
-                  <th className="px-1.5 py-2 font-medium">Expected</th>
-                  <th className="px-1.5 py-2 font-medium">Caught</th>
-                  <th className="px-1.5 py-2 font-medium">Misses</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.errorType} data-error-type={r.errorType} className="rule-dashed">
-                    <td className="px-1.5 py-2">{r.label}</td>
-                    <td className="px-1.5 py-2 font-mono">{r.expected}</td>
-                    <td className={cn('px-1.5 py-2 font-mono', r.caught < r.total && 'text-bad')}>
-                      {r.caught} / {r.total}
-                    </td>
-                    <td className="px-1.5 py-2">
-                      {r.misses.length > 0 ? (
-                        <a href={`#miss-${r.errorType}`} className="text-bad">
-                          {r.misses.length} · view
-                        </a>
-                      ) : (
-                        <span className="text-muted">none</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {ev && (
-            <div>
+            <>
+              <EvalTable job={ev} idPrefix="new" />
               <CardLabel>misses</CardLabel>
-              {misses.length === 0 ? (
-                <p className="m-0 mt-1 text-small text-muted">None in this run{evalRunning ? ' so far' : ''}.</p>
+              {misses.length === 0 && evalRunning ? (
+                <p className="m-0 text-small text-muted">None so far.</p>
               ) : (
-                <ul aria-label="Misses" className="m-0 mt-1 list-none p-0 font-mono text-small">
-                  {misses.map((m) => (
-                    <li key={m.item_id} id={`miss-${m.error_type}`} className="text-bad">
-                      {m.invoice_number} · {m.error_type} · expected {m.expected_outcome}
-                      {m.expected_reason_code && ` (${m.expected_reason_code})`} · got {m.actual_outcome}
-                      {m.actual_reason_codes.length > 0 && ` (${m.actual_reason_codes.join(', ')})`}
-                    </li>
-                  ))}
-                </ul>
+                <MissList job={ev} idPrefix="new" />
               )}
-            </div>
+            </>
           )}
           <div className="text-small text-muted">Misses are listed, not hidden.</div>
         </Card>

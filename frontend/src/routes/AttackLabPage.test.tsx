@@ -21,6 +21,7 @@ vi.mock('@/api/client', async (importOriginal) => {
     createBatch: vi.fn(),
     createRun: vi.fn(),
     getRun: vi.fn(),
+    getBatch: vi.fn(),
     getAutopilot: vi.fn(),
     listInboxItems: vi.fn(),
     getVendor: vi.fn(),
@@ -125,7 +126,9 @@ describe('<AttackLabPage>', () => {
       .mockResolvedValue([
         { item_id: 'inbox-9', document_id: doc, sender: 'x', received_at: '2026-10-24T00:00:00Z', status: 'processing', run_id: 'run-auto-1' },
       ])
-    m.getRun.mockResolvedValue({ ...run, run_id: 'run-auto-1' })
+    m.getRun.mockResolvedValue({ ...run, run_id: 'run-auto-1', batch_id: 'batch-autopilot' })
+    const aggregate: Batch = { ...attackBatch, batch_id: 'batch-autopilot', kind: 'standard', invoices: attackBatch.invoices.slice(0, 1) }
+    m.getBatch.mockResolvedValue(aggregate)
     const user = userEvent.setup()
     const router = renderLab()
     await screen.findByText('Autopilot picks it up, no click')
@@ -136,6 +139,9 @@ describe('<AttackLabPage>', () => {
     expect(m.createRun).not.toHaveBeenCalled()
     expect(m.getRun).toHaveBeenCalledWith('run-auto-1')
     expect(useConsoleStore.getState().run?.run_id).toBe('run-auto-1')
+    // The console gets the autopilot run's aggregate batch, not the five-invoice attack batch.
+    expect(m.getBatch).toHaveBeenCalledWith('batch-autopilot')
+    expect(useConsoleStore.getState().batch?.batch_id).toBe('batch-autopilot')
   })
 
   it('says when autopilot leaves the unguarded lane out', async () => {

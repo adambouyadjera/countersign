@@ -10,6 +10,9 @@ import batch from '@fixtures/batch.json'
 import demoReset from '@fixtures/demo_reset.json'
 import documentInv003 from '@fixtures/document_INV-003.json'
 import evalJob from '@fixtures/eval_job.json'
+// The backend's saved responses for the two recorded planted-errors jobs (mock mode only).
+import { job as recordedEvalBefore } from '@evidence/eval_results.json'
+import { job as recordedEvalAfter } from '@evidence/eval_results_after_semantic.json'
 import graphInv003 from '@fixtures/graph_INV-003.json'
 import health from '@fixtures/health.json'
 import inbox from '@fixtures/inbox.json'
@@ -36,6 +39,8 @@ export const fixtures = {
   demoReset,
   documentInv003,
   evalJob,
+  recordedEvalBefore,
+  recordedEvalAfter,
   graphInv003,
   health,
   inbox,

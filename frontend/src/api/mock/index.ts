@@ -153,7 +153,14 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
       byId(m[1] === 'default' ? fixtures.bankChangeReplay.run_id : m[1], fixtures.bankChangeReplay.run_id, fixtures.bankChangeReplay, 'recorded run'),
   ],
   ['POST', /^\/api\/eval$/, () => ok(fixtures.evalJob)],
-  ['GET', /^\/api\/eval\/([^/]+)$/, (m) => byId(m[1], fixtures.evalJob.job_id, fixtures.evalJob, 'eval job')],
+  [
+    'GET',
+    /^\/api\/eval\/([^/]+)$/,
+    (m) => {
+      const recorded = [fixtures.recordedEvalBefore, fixtures.recordedEvalAfter].find((j) => j.job_id === m[1])
+      return recorded ? ok(recorded) : byId(m[1], fixtures.evalJob.job_id, fixtures.evalJob, 'eval job')
+    },
+  ],
 ]
 
 function pathOf(url: string): string {

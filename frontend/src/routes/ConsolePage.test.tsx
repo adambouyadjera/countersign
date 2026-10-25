@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider, useSearchParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import approvalsFixture from '@fixtures/approvals.json'
+import autopilotFixture from '@fixtures/autopilot.json'
+import inboxFixture from '@fixtures/inbox.json'
 import balancesFixture from '@fixtures/balances.json'
 import batchFixture from '@fixtures/batch.json'
 import peopleFixture from '@fixtures/people.json'
@@ -31,6 +33,10 @@ vi.mock('@/api/client', async (importOriginal) => {
     getVendor: vi.fn(),
     getPlannerTranscript: vi.fn(),
     resolveApproval: vi.fn(),
+    getAutopilot: vi.fn(),
+    listInboxItems: vi.fn(),
+    getRun: vi.fn(),
+    getBatch: vi.fn(),
   }
 })
 
@@ -73,6 +79,9 @@ async function drawAndRun(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   useConsoleStore.setState({ batch: null, run: null, runNonce: 0, selectedInvoiceId: null, focusedInvoiceId: null })
+  mocked.getAutopilot.mockResolvedValue(autopilotFixture as Awaited<ReturnType<typeof client.getAutopilot>>)
+  mocked.listInboxItems.mockResolvedValue([])
+  mocked.getBatch.mockResolvedValue(batch)
   streamEvents = allEvents
   mocked.getBalances.mockResolvedValue(balancesFixture as Balances)
   mocked.createBatch.mockResolvedValue(batch)
@@ -140,7 +149,7 @@ describe('<ConsolePage>', () => {
     expect(card).toHaveTextContent('Sig → Avery Chen, AP manager')
     expect(card).toHaveTextContent("We've paid •••• 3333 once.")
     expect(within(card).getByTestId('approval-resolution')).toHaveTextContent('Rejected')
-    expect(within(card).queryByRole('button', { name: 'Pay account on file' })).toBeNull()
+    expect(within(card).queryByRole('button', { name: /Pay .*the account on file/ })).toBeNull()
     expect(within(card).getByRole('link', { name: 'evidence trail' })).toBeInTheDocument()
 
     const totals = screen.getByLabelText('Totals for this run')
@@ -149,7 +158,7 @@ describe('<ConsolePage>', () => {
     expect(totals).toHaveTextContent('to attacker · $0')
   })
 
-  it('pays the account on file from a pending approval, acting as the person with the required role', async () => {
+  it('pays the account on file from a pending approval, acting as the AP manager by default', async () => {
     mocked.listApprovals.mockResolvedValue([pendingApproval])
     mocked.resolveApproval.mockResolvedValue(resolvedApproval!)
     streamEvents = allEvents.filter((e) => e.type !== 'approval.resolved')
@@ -159,8 +168,8 @@ describe('<ConsolePage>', () => {
     // Mid-run the console follows the duel; once it ends it settles on the hold.
     await waitFor(() => expect(screen.getByTestId('stream-status')).toHaveTextContent('run completed'))
     const card = await screen.findByRole('article', { name: 'Approval for INV-003' })
-    const pay = await within(card).findByRole('button', { name: 'Pay account on file' })
-    // Enabled once GET /api/people has named the approver.
+    const pay = await within(card).findByRole('button', { name: 'Pay •••• 3333, the account on file' })
+    // Enabled once GET /api/people has named someone to act as.
     await waitFor(() => expect(pay).toBeEnabled())
     await user.click(pay)
     expect(mocked.resolveApproval).toHaveBeenCalledWith('approval-INV-003', {
@@ -245,5 +254,25 @@ describe('<ConsolePage>', () => {
     expect(alert).toHaveTextContent('Nessie is unreachable')
     await user.click(within(alert).getByRole('button', { name: 'retry' }))
     expect(await screen.findByRole('list', { name: 'Invoices in batch' })).toBeInTheDocument()
+  })
+
+  it('lists the AP inbox with each item\'s status, and opens the autopilot run with its aggregate batch', async () => {
+    mocked.listInboxItems.mockResolvedValue(inboxFixture as Awaited<ReturnType<typeof client.listInboxItems>>)
+    mocked.getAutopilot.mockResolvedValue({ ...autopilotFixture, enabled: true, lanes: ['countersign', 'unguarded'], run_id: run.run_id })
+    const aggregate: Batch = { ...batch, batch_id: 'batch-autopilot', invoices: batch.invoices.slice(2, 3) }
+    mocked.getRun.mockResolvedValue({ ...run, batch_id: aggregate.batch_id })
+    mocked.getBatch.mockResolvedValue(aggregate)
+    const user = userEvent.setup()
+    renderConsole()
+    const mail = await screen.findByRole('region', { name: 'AP inbox' })
+    const item = await within(mail).findByText('processed')
+    expect(item.closest('[data-inbox-item]')).toHaveAttribute('data-status', 'processed')
+    expect(mail).toHaveTextContent('billing@example.invalid')
+    await user.click(within(mail).getByRole('button', { name: 'watch the autopilot run' }))
+    await waitFor(() => expect(useConsoleStore.getState().batch?.batch_id).toBe('batch-autopilot'))
+    expect(mocked.getBatch).toHaveBeenCalledWith('batch-autopilot')
+    expect(useConsoleStore.getState().run?.run_id).toBe(run.run_id)
+    const list = await screen.findByRole('list', { name: 'Invoices in batch' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
   })
 })

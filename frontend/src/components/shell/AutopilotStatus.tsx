@@ -1,20 +1,26 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { setAutopilot } from '@/api/client'
 import { isApiError } from '@/api/errors'
-import type { Autopilot } from '@/api/types'
+import type { Autopilot, Lane } from '@/api/types'
 import { useAutopilot } from '@/hooks/queries'
 import { cn } from '@/lib/cn'
 
+/** Autopilot processes the inbox through both lanes, so the demo can compare them. */
+const AUTOPILOT_LANES: Lane[] = ['countersign', 'unguarded']
+
 /**
- * "autopilot on/off" from GET /api/autopilot. On the console (`interactive`) it is a
+ * "autopilot on/off" from GET /api/autopilot. When `interactive` (the header) it is a
  * switch that POSTs /api/autopilot. Says "unavailable" rather than guessing when the call fails.
  */
 export function AutopilotStatus({ interactive = false }: { interactive?: boolean }) {
   const q = useAutopilot()
   const qc = useQueryClient()
   const toggle = useMutation({
-    mutationFn: (a: Autopilot) => setAutopilot({ enabled: !a.enabled, lanes: a.lanes }),
-    onSuccess: (next) => qc.setQueryData(['autopilot'], next),
+    mutationFn: (a: Autopilot) => setAutopilot({ enabled: !a.enabled, lanes: AUTOPILOT_LANES }),
+    onSuccess: (next) => {
+      qc.setQueryData(['autopilot'], next)
+      void qc.invalidateQueries({ queryKey: ['inbox'] })
+    },
   })
 
   if (q.isPending) return <span className="text-muted">autopilot …</span>

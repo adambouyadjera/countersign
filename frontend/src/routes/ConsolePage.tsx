@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createBatch, createRun, getBalances, getPlannerTranscript } from '@/api/client'
+import { createBatch, createRun, getBalances, getBatch, getPlannerTranscript } from '@/api/client'
 import type { Lane } from '@/api/types'
 import { ApprovalCard } from '@/components/console/ApprovalCard'
 import { ChallengeInput } from '@/components/console/ChallengeInput'
 import { DuelTranscript } from '@/components/console/DuelTranscript'
 import { InboxColumn, type InboxTotals } from '@/components/console/InboxColumn'
+import { MailPanel } from '@/components/console/MailPanel'
 import { effectiveLaneStatus } from '@/components/console/lanes'
 import { ModeTag } from '@/components/console/ModeTag'
 import { OneSentencePanel } from '@/components/console/OneSentencePanel'
@@ -13,6 +14,7 @@ import { RequestError } from '@/components/console/RequestError'
 import { VendorHistoryLine } from '@/components/console/VendorHistoryLine'
 import { SigFace } from '@/components/sig'
 import { InkButton, Kbd } from '@/components/ui'
+import { useAutopilot } from '@/hooks/queries'
 import { useRunEvents, type StreamStatus } from '@/hooks/useRunEvents'
 import { handleNamespaces, splitHandle } from '@/lib/handle'
 import { formatCents } from '@/lib/money'
@@ -54,7 +56,7 @@ function isTypingTarget(t: EventTarget | null): boolean {
 }
 
 export function ConsolePage() {
-  const { batch, run, runNonce, selectedInvoiceId, setBatch, setRun, selectInvoice, setFocused } = useConsoleStore()
+  const { batch, run, runNonce, selectedInvoiceId, setBatch, setRun, selectInvoice, setFocused, refreshBatch } = useConsoleStore()
   const queryClient = useQueryClient()
 
   const newBatch = useMutation({ mutationFn: () => createBatch({ kind: 'standard' }), onSuccess: setBatch })
@@ -80,7 +82,30 @@ export function ConsolePage() {
     if (approvalEvents > 0) void queryClient.invalidateQueries({ queryKey: ['approvals'] })
   }, [approvalEvents, queryClient])
 
-  const canRun = Boolean(batch)
+  // An autopilot run's aggregate batch grows with each admitted inbox item: re-read it (and the inbox) on inbox.received.
+  const received = state.system.filter((e) => e.type === 'inbox.received').length
+  const batchId = run?.batch_id
+  useEffect(() => {
+    if (received === 0 || !batchId) return
+    void queryClient.invalidateQueries({ queryKey: ['inbox'] })
+    let stale = false
+    getBatch(batchId)
+      .then((b) => !stale && refreshBatch(b))
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [received, batchId, queryClient, refreshBatch])
+  // Each processing slice reports lane status; the inbox item's status changes with it.
+  const laneStatusEvents = cs.steps.filter((e) => e.type === 'lane.status').length + ug.steps.filter((e) => e.type === 'lane.status').length
+  useEffect(() => {
+    if (laneStatusEvents > 0) void queryClient.invalidateQueries({ queryKey: ['inbox'] })
+  }, [laneStatusEvents, queryClient])
+
+  // The autopilot run processes its inbox by itself; a manual run of its aggregate batch isn't offered.
+  const autopilot = useAutopilot()
+  const onAutopilotRun = Boolean(run) && run?.run_id === autopilot.data?.run_id
+  const canRun = Boolean(batch) && !onAutopilotRun
   const { mutate: run_, isPending: runPending } = startRun
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -168,12 +193,19 @@ export function ConsolePage() {
         selectedId={shownId}
         onSelect={selectInvoice}
         totals={totals}
+        mail={<MailPanel batch={batch} runId={run?.run_id} />}
         controls={
           <>
             <InkButton size="sm" variant="secondary" onClick={() => newBatch.mutate()} disabled={newBatch.isPending}>
               {newBatch.isPending ? 'drawing…' : 'new batch'}
             </InkButton>
-            <InkButton size="sm" onClick={() => run_()} disabled={!canRun || runPending} aria-keyshortcuts="r">
+            <InkButton
+              size="sm"
+              onClick={() => run_()}
+              disabled={!canRun || runPending}
+              aria-keyshortcuts="r"
+              title={onAutopilotRun ? 'Autopilot processes this run from the inbox' : undefined}
+            >
               {runPending ? 'starting…' : run ? 'run again' : 'run batch'}
               <Kbd>R</Kbd>
             </InkButton>

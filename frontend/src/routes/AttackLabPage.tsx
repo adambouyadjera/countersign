@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { createAttack, createBatch, createRun, getRun } from '@/api/client'
+import { createAttack, createBatch, createRun } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import type { Batch, InvoiceSummary, Lane } from '@/api/types'
 import { RequestError } from '@/components/console/RequestError'
 import { SigSays } from '@/components/sig'
 import { Card, Chip, InkButton, InkRow } from '@/components/ui'
 import { useAutopilot, useInbox, useVendor } from '@/hooks/queries'
+import { useOpenRun } from '@/hooks/useOpenRun'
 import { maskAccount } from '@/lib/account'
 import { ATTACK_MAX, ATTACKER_TOKEN, attackTextProblem, inboxItemFor, insertAt } from '@/lib/attack'
 import { cn } from '@/lib/cn'
@@ -87,14 +88,8 @@ export function AttackLabPage() {
   const waiting = Boolean(sent) && autopilotOn
   const inbox = useInbox(waiting)
   const item = sent && inbox.data ? inboxItemFor(inbox.data, sent) : undefined
-  const pickedUp = useMutation({
-    mutationFn: (runId: string) => getRun(runId),
-    onSuccess: (run) => {
-      setBatch(sent!)
-      setRun(run)
-      navigate('/console')
-    },
-  })
+  // Open the autopilot run with its aggregate batch (admitted inbox items), not the batch the attack came from.
+  const pickedUp = useOpenRun(() => navigate('/console'))
   const { mutate: openRun, isIdle: notOpened } = pickedUp
   useEffect(() => {
     if (waiting && item?.run_id && notOpened) openRun(item.run_id)

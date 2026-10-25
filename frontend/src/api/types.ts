@@ -84,6 +84,7 @@ export type EvalJob = S['EvalJob']
 export type RedTeamJob = S['RedTeamJob']
 export type AuditAnswer = S['AuditAnswer']
 export type Autopilot = S['Autopilot']
+export type InboxItem = S['InboxItem']
 export type UnguardedMode = NonNullable<S['RunRequest']['unguarded_mode']>
 export type ReasonCode = S['ReasonCode']
 export type BankChangeReplaySummary = S['BankChangeReplaySummary']

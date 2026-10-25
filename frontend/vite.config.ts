@@ -7,19 +7,22 @@ import tailwindcss from '@tailwindcss/vite'
 const apiTarget = 'http://localhost:8000'
 // Contract fixtures live outside frontend/. Only mock mode (VITE_USE_MOCK=1) imports them.
 const fixturesDir = fileURLToPath(new URL('../contracts/fixtures', import.meta.url))
+// Recorded backend evidence (read-only), e.g. the saved planted-errors eval jobs the API no longer serves.
+const evidenceDir = fileURLToPath(new URL('../backend/docs', import.meta.url))
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@fixtures': fixturesDir,
+      '@evidence': evidenceDir,
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
     port: 5173,
     strictPort: true,
-    fs: { allow: [searchForWorkspaceRoot(process.cwd()), fixturesDir] },
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), fixturesDir, evidenceDir] },
     proxy: {
       '/api': {
         target: apiTarget,

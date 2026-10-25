@@ -57,7 +57,7 @@ test('the other pages and the queue drawer have no 1px solid #D3CDC1 border eith
   await page.getByRole('article', { name: 'Approval for INV-003' }).getByRole('link', { name: 'evidence trail' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('INV-003 · Cedar Grove Catering · $640.00')
   expect(await greyBoxes(page)).toEqual([])
-  for (const label of ['books', 'proof', 'audit', 'attack lab']) {
+  for (const label of ['books', 'eval', 'audit', 'attack lab']) {
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: label }).click()
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(await greyBoxes(page), label).toEqual([])

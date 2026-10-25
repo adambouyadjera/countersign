@@ -1,3 +1,4 @@
+import { maskCanary } from '@/lib/canary'
 import { apiBaseUrl } from '@/lib/env'
 import { ApiError, networkError, parseApiError } from './errors'
 import { getTransport } from './transport'
@@ -45,7 +46,8 @@ async function send(method: Method, path: string, body?: unknown, accept = 'appl
 
 async function json<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const res = await send(method, path, body)
-  const text = await res.text()
+  // Canary markers are masked by the backend; mask again so none can ever reach the screen.
+  const text = maskCanary(await res.text())
   try {
     return JSON.parse(text) as T
   } catch {

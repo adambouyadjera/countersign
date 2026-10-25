@@ -138,8 +138,7 @@ describe('<CaseFilePage>', () => {
     m.resolveApproval.mockResolvedValue(resolved!)
     const user = userEvent.setup()
     renderCase()
-    await screen.findByRole('option', { name: /Jordan Patel/ })
-    await user.selectOptions(screen.getByRole('combobox'), 'person-controller')
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Act as' }), 'person-controller')
     const pay = await screen.findByRole('button', { name: 'Pay •••• 3333, the account on file' })
     await user.click(pay)
     expect(m.resolveApproval).toHaveBeenCalledWith('approval-INV-003', {
@@ -153,20 +152,23 @@ describe('<CaseFilePage>', () => {
       new ApiError({
         status: 403,
         code: 'sod_violation',
-        message: 'person-ap-agent requested this payment and cannot approve it.',
+        message: 'Morgan Diaz verified bank details and cannot approve payments. Eligible approvers: Avery Chen, Jordan Patel.',
         envelope: true,
       }),
     )
     const user = userEvent.setup()
     renderCase()
-    await screen.findByRole('option', { name: /Fogline AP Agent/ })
-    await user.selectOptions(screen.getByRole('combobox'), 'person-ap-agent')
+    const actAs = await screen.findByRole('combobox', { name: 'Act as' })
+    // Only the humans are offered; the AP agent is not someone to act as.
+    expect(within(actAs).queryByRole('option', { name: /Fogline AP Agent/ })).toBeNull()
+    await user.selectOptions(actAs, 'person-vendor-admin')
     await user.click(await screen.findByRole('button', { name: 'Reject' }))
     const banner = await screen.findByTestId('sod-banner')
     expect(banner).toHaveAttribute('role', 'alert')
     expect(banner).toHaveTextContent('Segregation of duties: not allowed')
-    expect(banner).toHaveTextContent('person-ap-agent requested this payment and cannot approve it.')
-    expect(m.resolveApproval).toHaveBeenCalledWith('approval-INV-003', { decision: 'reject', actor_id: 'person-ap-agent' })
+    // The server's message, as-is, including who can approve instead.
+    expect(banner).toHaveTextContent('Morgan Diaz verified bank details and cannot approve payments. Eligible approvers: Avery Chen, Jordan Patel.')
+    expect(m.resolveApproval).toHaveBeenCalledWith('approval-INV-003', { decision: 'reject', actor_id: 'person-vendor-admin' })
   })
 
   it('approving the new account asks for its last four digits', async () => {
