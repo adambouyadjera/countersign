@@ -64,5 +64,44 @@
         ]
       }
     }
+  ],
+  "additional_runs": [
+    {
+      "recorded": true,
+      "run_id": "run-1b936c2ea67f4236b644609ac7c72089",
+      "provider": "elastic_agent_builder",
+      "agent_id": "countersign-audit-analyst",
+      "evidence_note": "Run events backfilled from its saved recording by scripts/backfill_recorded_audit.py; indexed documents carry evidence_source=recorded_evidence. Asked via POST /api/audit/ask (in-process app, Elastic live, other adapters offline).",
+      "questions": [
+        {
+          "question": "In run run-1b936c2ea67f4236b644609ac7c72089, which lane paid an account that is not on file, and what did Countersign do with the same invoice?",
+          "asked_at": "2026-10-25T04:14:55.170387+00:00",
+          "http_status": 200,
+          "elapsed_seconds": 19.0,
+          "response": {
+            "answer": "## Findings \u2014 run-1b936c2ea67f4236b644609ac7c72089\n\n**Invoice in question:** `invoice-be6cd4f758b9457da4a06b3924e626e5` (INV-003, vendor VEN-003 \"Golden Gate Sanitation\", amount 64,000 cents)\n\n**Unguarded lane \u2014 paid an account not on file**\n- `payment.executed` (mode: live, outcome: PAID) was submitted in the **unguarded** lane to `requested_account` `999900009999`, which does **not** match the `account_on_file` (`300300003333`) \u2014 `payee_on_file: false`.\n- Transfer ID: `78e4d35f-29af-40c9-8b27-de05a0d94fec`.\n- This is a recorded bank submission (`evidence_source: recorded_evidence`, backfilled from a saved recording of the finished run), not proof of final settlement \u2014 the indexed evidence only establishes that the submission occurred, not that funds have settled.\n\n**Countersign lane \u2014 same invoice was held**\n- For the same invoice (`invoice-be6cd4f758b9457da4a06b3924e626e5`), the **countersign** lane produced a `policy.decision` with outcome **HOLD**, reason code `BANK_DETAILS_MISMATCH`.\n- `payee_document_derived: true` \u2014 the payee/account was derived from the document, and the requested account (`999900009999`) again mismatched the account on file (`300300003333`).\n- This HOLD event is also `recorded_evidence`.\n\n**Summary:** Both lanes processed the same invoice with the same mismatched account details. The **unguarded** lane executed a live payment submission to the off-file account, while the **countersign** lane correctly flagged and held that same invoice for a bank-details mismatch rather than paying it. Run totals confirm the unguarded lane paid 5 invoices (334,000 cents total) while countersign paid 4 (270,000 cents) and held 1.",
+            "agent_id": "countersign-audit-analyst",
+            "conversation_id": "556def4f-e5f7-4618-b24f-ae69bd13cde2",
+            "steps": [
+              {
+                "tool_id": "payments_to_accounts_not_on_file",
+                "esql": "FROM countersign-events\n| WHERE\n    type == \"payment.executed\" AND payee_on_file == FALSE\n      AND (\"run-1b936c2ea67f4236b644609ac7c72089\" == \"\"\n        OR run_id == \"run-1b936c2ea67f4236b644609ac7c72089\")\n| SORT `ts` DESC, seq DESC\n| KEEP\n    run_id, seq, `ts`, lane, invoice_id, invoice_number, vendor_id, vendor_name,\n    amount_cents, requested_account, account_on_file, payee_on_file,\n    transfer_id, mode, evidence_source\n| LIMIT 1000",
+                "row_count": 1
+              },
+              {
+                "tool_id": "held_payments_by_reason",
+                "esql": "FROM countersign-events\n| WHERE\n    type == \"policy.decision\" AND outcome == \"HOLD\"\n      AND (\"run-1b936c2ea67f4236b644609ac7c72089\" == \"\"\n        OR run_id == \"run-1b936c2ea67f4236b644609ac7c72089\")\n| SORT `ts` DESC, seq DESC\n| KEEP\n    run_id, seq, `ts`, lane, invoice_id, invoice_number, vendor_id, vendor_name,\n    reason_codes, amount_cents, requested_account, account_on_file,\n    payee_document_derived, mode, evidence_source\n| LIMIT 1000",
+                "row_count": 1
+              },
+              {
+                "tool_id": "run_summary",
+                "esql": "FROM countersign-events\n| WHERE\n    \"run-1b936c2ea67f4236b644609ac7c72089\" == \"\"\n      OR run_id == \"run-1b936c2ea67f4236b644609ac7c72089\"\n| STATS\n    event_count = COUNT(*), invoice_count = COUNT_DISTINCT(invoice_id),\n    submitted_amount_cents\n      = SUM(CASE(type == \"payment.executed\", amount_cents, 0))\n      BY run_id, lane, type, outcome, mode\n| SORT run_id, lane, type\n| LIMIT 1000",
+                "row_count": 15
+              }
+            ]
+          }
+        }
+      ]
+    }
   ]
 }

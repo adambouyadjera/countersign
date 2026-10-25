@@ -17,6 +17,8 @@ _KEYWORDS = (
     "run_id", "lane", "type", "invoice_id", "vendor_id", "outcome",
     "reason_codes", "transfer_id", "mode", "attack_placement", "invoice_number",
     "vendor_name", "batch_id", "requested_account", "account_on_file",
+    # Set only on documents backfilled from a saved recording (app.audit.recorded).
+    "evidence_source", "recorded_source_file",
 )
 EVENT_MAPPINGS = {"dynamic": "strict", "properties": {
     **{name: {"type": "keyword"} for name in _KEYWORDS},

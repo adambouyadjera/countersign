@@ -135,3 +135,24 @@ Now the optional body sets autopilot (true: both lanes, fresh run; false or
 absent: off) and is validated. The ledger is deliberately not cleared: journal
 entries are append-only (SQLite `ledger_no_delete` trigger) and remain the audit
 trail across resets; reconciliation is already scoped to the new session.
+
+## Item 9 — Elastic on both lanes
+
+Not reproduced as an indexing defect. Every appended event, from both lanes,
+enters the audit outbox through the same projection (`map_event`), which takes
+`payee_on_file` from the payment. A read-only ES|QL check of the live
+`countersign-events` index found 2528 unguarded and 1742 Countersign events and
+`payment.executed` rows for both lanes, all `payee_on_file: true`. A read-only
+copy of the running database agreed: 47 Countersign and 79 unguarded payments,
+none off file, and no undelivered outbox rows. "Zero results" was the correct
+answer for the indexed live runs: the only off-file payment is in the saved
+bank-change recording, which had never been indexed.
+
+Added `scripts/backfill_recorded_audit.py`: it maps the recording's events with
+the same projection (enriched from the recording via an in-memory store) and
+indexes them with IDs `recorded:<run_id>:<seq>`, labelled
+`evidence_source: "recorded_evidence"` and `recorded_source_file`. Backfilled
+run-1b936c2ea67f4236b644609ac7c72089: 70 events, one unguarded off-file payment.
+The two row tools return `evidence_source` and the agent instructions explain it
+(re-provisioned with `scripts/setup_elastic_agent.py`). The real answer and its
+ES|QL steps are saved in `docs/elastic_answers.json`.
