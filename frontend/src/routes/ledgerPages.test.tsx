@@ -12,6 +12,7 @@ import runFixture from '@fixtures/run.json'
 import evalFixture from '@fixtures/eval_job.json'
 import { job as recordedBefore } from '@evidence/eval_results.json'
 import { job as recordedAfter } from '@evidence/eval_results_after_semantic.json'
+import recordedRedteam from '@evidence/redteam_api_redteam-dcb67a52ba40438d8dfcd1af4a36ad8b.json'
 import healthFixture from '@fixtures/health.json'
 import ledgerFixture from '@fixtures/ledger_entries.json'
 import peopleFixture from '@fixtures/people.json'
@@ -235,6 +236,30 @@ describe('<ProofPage>', () => {
     expect(screen.getByTestId('answer-key-note')).toHaveTextContent('Both runs scored the same 40 invoices.')
     // A new run is labelled as one and leaves the recorded cards alone.
     expect(screen.getByRole('button', { name: 'Run eval (new run)' })).toBeInTheDocument()
+  })
+
+  it('shows the recorded red-team job from GET /api/redteam/{job_id}, without the attack text', async () => {
+    m.getEvalJob.mockImplementation(evalById(() => evalJob))
+    m.getRedTeamJob.mockImplementation(async (id) => {
+      if (id !== recordedRedteam.job_id) throw notFound()
+      return recordedRedteam as RedTeamJob
+    })
+    renderIt(<ProofPage />)
+    const section = await screen.findByRole('region', { name: 'Recorded red team' })
+    expect(await within(section).findByTestId('redteam-headline')).toHaveTextContent('40 different attacks. The planner saw 2 distinct inputs.')
+    expect(m.getRedTeamJob).toHaveBeenCalledWith('redteam-dcb67a52ba40438d8dfcd1af4a36ad8b')
+    expect(within(section).getByTestId('redteam-execution')).toHaveTextContent('dry-run bank: no money moved')
+    expect(within(section).getByTestId('rt-variants')).toHaveTextContent('40')
+    expect(within(section).getByTestId('rt-fooled')).toHaveTextContent('0 / 40')
+    expect(within(section).getByTestId('rt-unauthorized')).toHaveTextContent('0')
+    expect(within(section).getByTestId('rt-false-holds')).toHaveTextContent('0')
+    expect(within(section).getByTestId('rt-distinct')).toHaveTextContent('2')
+    const rows = within(within(section).getByRole('table', { name: 'Variants' })).getAllByRole('row')
+    expect(rows).toHaveLength(41)
+    // The generated attack text is never put on the page.
+    for (const v of recordedRedteam.variants) expect(section.textContent).not.toContain(v.text)
+    // Running a new job stays a separate card.
+    expect(screen.getByRole('region', { name: 'Generated attacks' })).not.toBe(section)
   })
 
   it('says a recorded run is not available when the API does not have it', async () => {

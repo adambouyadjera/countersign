@@ -8,6 +8,7 @@ import { SigSays } from '@/components/sig'
 import { Card, CardLabel, InkButton } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { EvalTable, MissList, RecordedEvals } from '@/components/proof/RecordedEval'
+import { RecordedRedTeam } from '@/components/proof/RecordedRedTeam'
 import { jobDone, proofKpis, redteamMarks, type MarkTone } from '@/lib/proof'
 import { useProofStore } from '@/state/proofStore'
 
@@ -117,6 +118,7 @@ export function ProofPage() {
       </div>
 
       <RecordedEvals />
+      <RecordedRedTeam />
 
       <h2 className="display m-0 px-7 pt-5 text-big">New run</h2>
       <p className="m-0 px-7 text-small text-muted">
@@ -168,7 +170,7 @@ export function ProofPage() {
         <Card
           as="section"
           aria-label="Generated attacks"
-          label={`generated attacks${rt ? ` · ${rt.mutator_model}` : ''}`}
+          label={`new run · generated attacks${rt ? ` · ${rt.mutator_model}` : ''}`}
           className="flex flex-col gap-3.5 p-[18px]"
         >
           {startRed.isError && <SendError error={startRed.error} endpoint="POST /api/redteam" />}

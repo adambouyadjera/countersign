@@ -19,6 +19,10 @@ test('eval: recorded before/after results, and a new run that fills its own tile
   await expect(page.getByTestId('recorded-score-0')).toHaveText('38 / 40')
   await expect(page.getByTestId('recorded-score-1')).toHaveText('40 / 40')
   await expect(page.getByTestId('answer-key-note')).toContainText('committed before the first run')
+  // The recorded red-team job, separate from running a new one.
+  await expect(page.getByTestId('redteam-headline')).toHaveText('40 different attacks. The planner saw 2 distinct inputs.')
+  await expect(page.getByTestId('redteam-execution')).toHaveText('dry-run bank: no money moved')
+  await expect(page.getByRole('table', { name: 'Variants' }).getByRole('row')).toHaveCount(41)
   await expect(page.getByTestId('kpi-matches')).toHaveText('—')
   await page.getByRole('button', { name: 'Run eval (new run)' }).click()
   await expect(page.getByTestId('kpi-matches')).toHaveText('5 / 5')
