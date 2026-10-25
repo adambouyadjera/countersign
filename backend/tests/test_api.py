@@ -144,11 +144,15 @@ async def test_sse_replays_resumes_and_delivers_approvals_after_completed(applic
 
 
 @pytest.mark.asyncio
-async def test_sse_sends_comment_heartbeat_and_waits_at_replay_cursor(application):
+async def test_sse_sends_comment_heartbeat_and_waits_at_replay_cursor(application, monkeypatch):
+    from app.api import runs
+
+    assert runs.SSE_HEARTBEAT_SECONDS == 15
+    monkeypatch.setattr(runs, "SSE_HEARTBEAT_SECONDS", 0.01)
     async with application.router.lifespan_context(application):
         run_id = save_run(application)
         async with ASGIStream(application, run_id, 0) as stream:
-            assert await stream.frame(timeout=17) == ": heartbeat"
+            assert await stream.frame() == ": keep-alive"
             event = await application.state.event_bus.publish(run_id, {"type": "run.completed", "lane": "system", "payload": {"tallies": {}}})
             assert (await stream.event()) == event
 
