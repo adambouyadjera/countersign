@@ -12,7 +12,14 @@ test('mock run: INV-003 is the failed round and the approval card is shown', asy
   await runBatch(page)
   // While the run is active Sig says which invoice it is dueling.
   await expect(page.getByRole('status').filter({ hasText: /Dueling INV-00\d…|Reading the inbox…/ })).toBeVisible()
+  // Each lane shows its current step from the stream, with an elapsed counter.
+  const cs = page.locator('[data-lane-progress="countersign"]')
+  await expect(cs).toHaveAttribute('data-active', 'true')
+  await expect(page.getByTestId('elapsed-countersign')).toHaveText(/· \d+(s|m \d\ds)$/)
   await expect(page.getByTestId('stream-status')).toContainText('run completed', { timeout: 30_000 })
+  await expect(cs).toHaveAttribute('data-step', 'done')
+  await expect(page.locator('[data-lane-progress="unguarded"]')).toHaveAttribute('data-step', 'done')
+  await expect(page.getByTestId('stream-dropped')).toHaveCount(0)
 
   await expect(page.getByTestId('sig-status')).toContainText('held INV-003')
   await expect(page.locator('[data-invoice="INV-003"]')).toHaveAttribute('data-status', 'held')

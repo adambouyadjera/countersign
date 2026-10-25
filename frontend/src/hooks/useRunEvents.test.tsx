@@ -133,4 +133,29 @@ describe('useRunEvents', () => {
     unmount()
     expect(opened[1]!.readyState).toBe(2)
   })
+
+  it('reconnect() opens a fresh stream, keeps the events and records when the last one arrived', async () => {
+    const { result } = renderHook(() => useRunEvents(RUN_ID))
+    await flush()
+    act(() => {
+      opened[0]!.open()
+      opened[0]!.send(events[0]!)
+      opened[0]!.send(events[1]!)
+    })
+    expect(result.current.state.events).toHaveLength(2)
+    expect(result.current.lastEventAt).not.toBeNull()
+    act(() => result.current.reconnect())
+    await flush()
+    expect(opened).toHaveLength(2)
+    expect(opened[0]!.readyState).toBe(2)
+    expect(result.current.state.events).toHaveLength(2)
+    act(() => {
+      opened[1]!.open()
+      // A replay from the start is harmless: duplicates are dropped by seq.
+      opened[1]!.send(events[0]!)
+      opened[1]!.send(events[2]!)
+    })
+    expect(result.current.state.events.map((e) => e.seq)).toEqual([1, 2, 3])
+    expect(result.current.stream).toBe('open')
+  })
 })
