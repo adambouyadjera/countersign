@@ -58,6 +58,10 @@ export interface BcLane {
   holds: BcHoldRow[]
   /** From run.completed only. */
   tally?: LaneTally
+  /** The lane has done something beyond reporting its status (read a document, etc.). */
+  started: boolean
+  /** Countersign: the planner has proposed its plan, so the leak-guard counts describe something. */
+  planned: boolean
 }
 
 export interface BcLanes {
@@ -80,7 +84,7 @@ export interface BcContext {
   laneMeta?: Partial<Record<Lane, { provider?: string; model?: string }>>
 }
 
-const emptyLane = (lane: Lane): BcLane => ({ lane, payments: [], holds: [] })
+const emptyLane = (lane: Lane): BcLane => ({ lane, payments: [], holds: [], started: false, planned: false })
 
 export function lanesFromEvents(events: readonly RunEvent[], ctx: BcContext): BcLanes {
   const out: BcLanes = { unguarded: emptyLane('unguarded'), countersign: emptyLane('countersign'), extractionModels: [], completed: false }
@@ -91,6 +95,7 @@ export function lanesFromEvents(events: readonly RunEvent[], ctx: BcContext): Bc
   for (const e of [...events].sort((a, b) => a.seq - b.seq)) {
     if (e.lane !== 'system') {
       const l = out[e.lane]
+      if (e.type !== 'lane.status') l.started = true
       if (e.lane === 'unguarded' && e.model) {
         l.model = e.model
         if (e.provider) l.provider = e.provider
@@ -105,6 +110,7 @@ export function lanesFromEvents(events: readonly RunEvent[], ctx: BcContext): Bc
         break
       case 'plan.proposed':
         out.countersign.model = e.payload.planner_model
+        out.countersign.planned = true
         break
       case 'fields.extracted': {
         const p = e.payload.extraction_provenance

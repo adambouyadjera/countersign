@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { isApiError } from '@/api/errors'
+import { DemoHistoryTag } from '@/components/ui'
 import { usePeople, useVendor } from '@/hooks/queries'
 import { maskAccount } from '@/lib/account'
 import { shortDate, summarizeVendor } from '@/lib/vendorHistory'
@@ -22,7 +23,17 @@ export function VendorHistoryLine({ vendorId }: { vendorId: string }) {
     <span data-testid="vendor-history">
       on file {maskAccount(s.accountOnFile)} ·{' '}
       {s.paidCount === 0 ? 'never paid' : `paid ${s.paidCount}× since ${shortDate(s.paidSince!, true)}`}
-      {s.verifiedAt && ` · verified ${shortDate(s.verifiedAt)}${s.verifiedBy ? ` by ${s.verifiedBy}` : ''}`} ·{' '}
+      {s.verifiedAt && ` · verified ${shortDate(s.verifiedAt)}${s.verifiedBy ? ` by ${s.verifiedBy}` : ''}`}
+      {(s.archivedPaid > 0 || s.verificationArchived) && (
+        <>
+          {' '}
+          <DemoHistoryTag
+            className="align-middle"
+            title={`${s.archivedPaid} of these payments${s.verificationArchived ? ' and the verification' : ''} are the seeded January–June archive`}
+          />
+        </>
+      )}
+      {' '}·{' '}
       <Link to={`/vendors/${encodeURIComponent(vendorId)}`} className="text-accent">
         vendor record
       </Link>

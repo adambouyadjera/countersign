@@ -1,3 +1,5 @@
+import { useQueries } from '@tanstack/react-query'
+import { getBatch, getRun } from '@/api/client'
 import type { Batch, InboxItem } from '@/api/types'
 import { Chip, InkButton, InkRow } from '@/components/ui'
 import { useAutopilot, useInboxList } from '@/hooks/queries'
@@ -9,6 +11,29 @@ const STATUS_TONE: Record<InboxItem['status'], 'default' | 'good' | 'untrusted'>
   queued: 'default',
   processing: 'untrusted',
   processed: 'good',
+}
+
+/** Runs looked up to name mail items that aren't in the open batch (the most recent ones). */
+const MAX_LOOKUP_RUNS = 8
+
+/**
+ * document_id → invoice number for inbox items, from the batch each item's run processed
+ * (GET /api/runs/{id} → GET /api/batches/{batch_id}). Items not yet in a run stay unnamed.
+ */
+function useInvoiceNumbers(items: readonly InboxItem[], open: Batch | null): Map<string, string> {
+  const known = new Map((open?.invoices ?? []).map((i) => [i.document_id, i.invoice_number] as const))
+  const runIds = [
+    ...new Set(items.filter((i) => i.run_id && !known.has(i.document_id)).map((i) => i.run_id!)),
+  ].slice(0, MAX_LOOKUP_RUNS)
+  const runs = useQueries({
+    queries: runIds.map((id) => ({ queryKey: ['run', id], queryFn: () => getRun(id), staleTime: 30_000, retry: false })),
+  })
+  const batchIds = [...new Set(runs.flatMap((r) => (r.data ? [r.data.batch_id] : [])))]
+  const batches = useQueries({
+    queries: batchIds.map((id) => ({ queryKey: ['batch', id], queryFn: () => getBatch(id), staleTime: 10_000, retry: false })),
+  })
+  for (const b of batches) for (const i of b.data?.invoices ?? []) if (!known.has(i.document_id)) known.set(i.document_id, i.invoice_number)
+  return known
 }
 
 /** HH:MM:SS of an ISO time, as the API sent it (UTC). */
@@ -26,7 +51,7 @@ export function MailPanel({ batch, runId }: { batch: Batch | null; runId: string
   const open = useOpenRun()
   const autoRun = autopilot.data?.run_id ?? null
   const items = [...(inbox.data ?? [])].sort((a, b) => b.received_at.localeCompare(a.received_at))
-  const invoiceOf = (docId: string) => batch?.invoices.find((i) => i.document_id === docId)
+  const numbers = useInvoiceNumbers(items, batch)
 
   return (
     <section aria-label="AP inbox" className="mt-3 flex flex-col gap-1.5 border-t border-dashed border-rule pt-3">
@@ -49,7 +74,7 @@ export function MailPanel({ batch, runId }: { batch: Batch | null; runId: string
       ) : (
         <ol aria-label="Inbox items" className="m-0 flex list-none flex-col gap-1.5 p-0">
           {items.map((it) => {
-            const inv = invoiceOf(it.document_id)
+            const number = numbers.get(it.document_id)
             const mine = Boolean(runId) && it.run_id === runId
             return (
               <InkRow
@@ -61,7 +86,9 @@ export function MailPanel({ batch, runId }: { batch: Batch | null; runId: string
                 className="flex flex-col gap-0.5 px-2.5 py-1.5 text-meta"
               >
                 <div className="flex items-center gap-2">
-                  <span className="min-w-0 truncate font-bold">{inv ? inv.invoice_number : it.document_id}</span>
+                  <span className="min-w-0 truncate font-bold" title={it.document_id}>
+                    {number ?? '—'}
+                  </span>
                   <Chip tone={STATUS_TONE[it.status]} className="ml-auto py-0 font-mono text-meta">
                     {it.status}
                   </Chip>

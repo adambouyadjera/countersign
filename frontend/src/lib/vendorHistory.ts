@@ -1,4 +1,5 @@
 import type { Person, VendorDetail } from '@/api/types'
+import { isArchivedAccount, isArchivedPayment } from './vendorArchive'
 
 export interface VendorHistorySummary {
   accountOnFile: string
@@ -9,6 +10,10 @@ export interface VendorHistorySummary {
   verifiedAt: string | null
   /** Name from GET /api/people, else the person id as sent. */
   verifiedBy: string | null
+  /** Of paidCount, how many are the seeded January–June demo archive. */
+  archivedPaid: number
+  /** The current account's verification is itself an archive record. */
+  verificationArchived: boolean
 }
 
 /** Facts about the account on file, from GET /api/vendors/{id} (and /api/people for names). */
@@ -26,6 +31,8 @@ export function summarizeVendor(vendor: VendorDetail, people: readonly Person[] 
     paidSince: since,
     verifiedAt: current?.verified_at ?? null,
     verifiedBy: verifier,
+    archivedPaid: payments.filter(isArchivedPayment).length,
+    verificationArchived: current ? isArchivedAccount(current) : false,
   }
 }
 

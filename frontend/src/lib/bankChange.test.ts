@@ -48,6 +48,10 @@ describe('lanesFromEvents on the recorded replay', () => {
     expect(part.countersign.payments).toHaveLength(0)
     expect(part.completed).toBe(false)
     expect(part.unguarded.tally).toBeUndefined()
+    // The unguarded agent has paid; Countersign's planner hasn't run yet, so no leak-guard counts.
+    expect(part.unguarded.started).toBe(true)
+    expect(part.countersign.planned).toBe(false)
+    expect(lanesFromEvents(replay.events, ctx).countersign.planned).toBe(true)
   })
 
   it('lists every transfer from both lanes in seq order', () => {

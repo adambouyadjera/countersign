@@ -1,19 +1,11 @@
 import { useParams } from 'react-router-dom'
 import type { Person } from '@/api/types'
 import { QueryView } from '@/components/casefile/Unavailable'
-import { Card, Chip } from '@/components/ui'
+import { Card, Chip, DemoHistoryTag } from '@/components/ui'
 import { usePeople, useVendor } from '@/hooks/queries'
 import { formatCents } from '@/lib/money'
 import { ROLE_LABEL } from '@/lib/roles'
 import { isArchivedAccount, isArchivedPayment } from '@/lib/vendorArchive'
-
-function DemoTag() {
-  return (
-    <Chip data-testid="demo-history" className="ml-2 py-0 font-mono text-[0.714rem] text-muted">
-      demo history
-    </Chip>
-  )
-}
 
 function who(people: readonly Person[], id: string): string {
   const p = people.find((x) => x.person_id === id)
@@ -55,7 +47,7 @@ export function VendorPage() {
                         <li key={i} data-account={a.account_display} className="rule-dashed pb-2 text-small">
                           <div className="flex items-center">
                             <span className="font-mono font-bold">{a.account_display}</span>
-                            {isArchivedAccount(a) && <DemoTag />}
+                            {isArchivedAccount(a) && <DemoHistoryTag className="ml-2" />}
                             {a.valid_to === null && (
                               <Chip tone="good" className="ml-auto py-0 font-mono text-meta">
                                 current
@@ -97,7 +89,7 @@ export function VendorPage() {
                           </td>
                           <td className="px-1.5 py-2">
                             {p.journal_entry_id}
-                            {isArchivedPayment(p) && <DemoTag />}
+                            {isArchivedPayment(p) && <DemoHistoryTag className="ml-2" />}
                           </td>
                         </tr>
                       ))}

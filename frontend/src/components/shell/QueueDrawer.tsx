@@ -19,8 +19,12 @@ export function QueueDrawer() {
   const [open, setOpen] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
-  // Filtered here too, in case a server ignores ?status=.
-  const pending = (q.data ?? []).filter((a) => a.status === 'pending')
+  // Filtered here too, in case a server ignores ?status=. Newest first.
+  const pending = (q.data ?? [])
+    .filter((a) => a.status === 'pending')
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  // One card's actions open at a time; the rest stay collapsed.
+  const [expanded, setExpanded] = useState<string | null>(null)
   const notBuilt = isApiError(q.error) && q.error.status === 404
 
   useEffect(() => {
@@ -107,9 +111,21 @@ export function QueueDrawer() {
                       {a.reason_codes.join(', ')} · needs {ROLE_LABEL[a.required_role]} · {a.created_at}
                     </p>
                     {/* The vendor id isn't on Approval; the case file and console link to the vendor record. */}
-                    <div className="mt-2.5">
-                      <CountersignActions approval={a} people={people.data ?? []} defaultActorId={person?.person_id} />
-                    </div>
+                    <InkButton
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2.5"
+                      aria-expanded={expanded === a.approval_id}
+                      aria-controls={`decide-${a.approval_id}`}
+                      onClick={() => setExpanded((x) => (x === a.approval_id ? null : a.approval_id))}
+                    >
+                      {expanded === a.approval_id ? 'Hide actions' : 'Decide…'}
+                    </InkButton>
+                    {expanded === a.approval_id && (
+                      <div id={`decide-${a.approval_id}`} className="mt-2.5">
+                        <CountersignActions approval={a} people={people.data ?? []} defaultActorId={person?.person_id} />
+                      </div>
+                    )}
                   </Card>
                 ))}
               </ul>

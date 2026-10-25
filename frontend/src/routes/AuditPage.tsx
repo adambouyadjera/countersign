@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { askAudit } from '@/api/client'
 import { isApiError } from '@/api/errors'
+import { AnswerText } from '@/components/audit/AnswerText'
 import { RequestError } from '@/components/console/RequestError'
 import { SigSays } from '@/components/sig'
 import { Card, Chip, InkButton, InkRow } from '@/components/ui'
+import { useAutopilot, useBatch, useRun } from '@/hooks/queries'
 import { useHealth } from '@/hooks/useHealth'
 import { useRunEvents } from '@/hooks/useRunEvents'
 import { cn } from '@/lib/cn'
@@ -18,14 +20,34 @@ const LOG_SIZE = 12
 const SUGGESTIONS = ['Money sent to accounts not on file', 'Who approved what today?', 'Summarize the latest run']
 
 export function AuditPage() {
-  const run = useConsoleStore((s) => s.run)
+  const consoleRun = useConsoleStore((s) => s.run)
   const runNonce = useConsoleStore((s) => s.runNonce)
-  const batch = useConsoleStore((s) => s.batch)
+  const consoleBatch = useConsoleStore((s) => s.batch)
+  // No run open on the console: follow the autopilot run (GET /api/autopilot run_id) instead.
+  const autopilot = useAutopilot()
+  const fallbackRunId = consoleRun ? undefined : (autopilot.data?.run_id ?? undefined)
+  const fallbackRun = useRun(fallbackRunId)
+  const fallbackBatch = useBatch(fallbackRun.data?.batch_id)
+  const runId = consoleRun?.run_id ?? fallbackRunId ?? null
+  const batch = consoleRun ? consoleBatch : fallbackBatch.data
   const health = useHealth()
   const elastic = health.data?.services.elastic
   const [question, setQuestion] = useState('')
-  const ask = useMutation({ mutationFn: (q: string) => askAudit({ question: q, ...(run ? { run_id: run.run_id } : {}) }) })
-  const { state } = useRunEvents(run?.run_id ?? null, runNonce)
+  const [askedAt, setAskedAt] = useState<number | null>(null)
+  const ask = useMutation({
+    mutationFn: (q: string) => askAudit({ question: q, ...(runId ? { run_id: runId } : {}) }),
+    onMutate: () => setAskedAt(Date.now()),
+  })
+  const { state } = useRunEvents(runId, consoleRun ? runNonce : 0)
+
+  // A real clock while the auditor works; nothing is simulated.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!ask.isPending) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [ask.isPending])
+  const elapsed = askedAt ? Math.max(0, Math.floor((now - askedAt) / 1000)) : 0
 
   const label = (id: string) => batch?.invoices.find((i) => i.invoice_id === id)?.invoice_number ?? id
   const latest = [...state.events].sort((a, b) => b.seq - a.seq).slice(0, LOG_SIZE)
@@ -64,6 +86,12 @@ export function AuditPage() {
             {ask.isPending ? 'asking…' : 'Ask'}
           </InkButton>
         </form>
+        {ask.isPending && (
+          <p role="status" data-testid="audit-waiting" className="m-0 text-small text-muted">
+            <span className="font-mono font-bold text-fg tabular">{elapsed}s</span> · The Elastic agent runs its own queries; answers
+            can take 1-2 minutes.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {SUGGESTIONS.map((s) => (
             <Chip
@@ -110,7 +138,9 @@ export function AuditPage() {
           )
         ) : ask.data ? (
           <Card as="article" aria-label="Answer" className="flex flex-col gap-3.5 p-5">
-            <div className="text-lead leading-relaxed whitespace-pre-wrap">{ask.data.answer}</div>
+            <div data-testid="answer-text" className="text-body">
+              <AnswerText text={ask.data.answer} />
+            </div>
             {ask.data.steps.map((s, i) => (
               <InkRow as="details" key={i} open={i === 0} className="px-3.5 py-2.5">
                 <summary className="cursor-pointer font-mono text-small">
@@ -137,11 +167,13 @@ export function AuditPage() {
       <Card
         as="aside"
         aria-label="Event log"
-        label={`event log · ${run ? 'current run, latest' : 'no run'}`}
+        label={`event log · ${consoleRun ? 'current run, latest' : fallbackRunId ? 'autopilot run, latest' : 'no run'}`}
         className="flex flex-col gap-2 p-[18px]"
       >
-        {!run ? (
-          <p className="m-0 text-small text-muted">Run a batch on the console to see its events here.</p>
+        {!runId ? (
+          <p className="m-0 text-small text-muted">
+            {autopilot.isPending ? 'Looking for a run…' : 'No run yet: run a batch on the console or turn autopilot on.'}
+          </p>
         ) : latest.length === 0 ? (
           <p className="m-0 text-small text-muted">Waiting for the run&apos;s events…</p>
         ) : (
@@ -175,7 +207,12 @@ export function AuditPage() {
             })}
           </ol>
         )}
-        {run && <p className="m-0 text-meta text-muted">From the run&apos;s event stream ({run.run_id}); the auditor queries the same events in Elastic.</p>}
+        {runId && (
+          <p className="m-0 text-meta text-muted">
+            From the {consoleRun ? 'run' : 'autopilot run'}&apos;s event stream ({runId}); the auditor queries the same events in
+            Elastic.
+          </p>
+        )}
       </Card>
     </div>
   )

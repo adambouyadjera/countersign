@@ -26,6 +26,8 @@ export interface InboxColumnProps {
   controls?: ReactNode
   /** The AP mailbox panel, under the controls. */
   mail?: ReactNode
+  /** Autopilot processes the inbox by itself; the empty state says so. */
+  autopilotOn?: boolean
 }
 
 const GLYPH: Record<InvoiceStatus | 'none', { glyph: string; tone: string; word: string }> = {
@@ -40,7 +42,7 @@ const GLYPH: Record<InvoiceStatus | 'none', { glyph: string; tone: string; word:
   failed: { glyph: '!', tone: 'text-bad', word: 'failed' },
 }
 
-export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, totals, controls, mail }: InboxColumnProps) {
+export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, totals, controls, mail, autopilotOn }: InboxColumnProps) {
   return (
     <Card
       as="aside"
@@ -58,7 +60,11 @@ export function InboxColumn({ batch, newBatch, statuses, selectedId, onSelect, t
         />
       ) : !batch ? (
         <p className="m-0 py-2 text-small text-muted">
-          {newBatch.isPending ? 'drawing a batch…' : 'Empty. Draw a batch of five invoices; one is poisoned.'}
+          {newBatch.isPending
+            ? 'drawing a batch…'
+            : autopilotOn
+              ? 'Autopilot is on: invoices are processed as they arrive. Submit one in the Attack Lab or draw a batch.'
+              : 'Empty. Draw a batch of five invoices; one is poisoned.'}
         </p>
       ) : (
         <ol aria-label="Invoices in batch" className="m-0 flex list-none flex-col gap-1.5 p-0">

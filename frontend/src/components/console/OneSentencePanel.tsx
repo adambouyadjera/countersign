@@ -3,7 +3,7 @@ import type { InvoiceSummary, SourceSpan } from '@/api/types'
 import { Card, InkRow, type InkRowTone } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { formatCentsShort } from '@/lib/money'
-import type { LaneOutcome } from '@/lib/outcomes'
+import { meaningfulSpans, type LaneOutcome } from '@/lib/outcomes'
 
 export interface OneSentencePanelProps {
   invoice: InvoiceSummary | undefined
@@ -16,8 +16,20 @@ export interface OneSentencePanelProps {
   children?: ReactNode
 }
 
-function outcomeBox(o: LaneOutcome, attackerIds: ReadonlySet<string>): { text: string; tone: 'good' | 'bad' | 'plain' | 'quiet' } {
+type BoxTone = 'good' | 'bad' | 'warn' | 'plain' | 'quiet'
+
+function outcomeBox(
+  o: LaneOutcome,
+  attackerIds: ReadonlySet<string>,
+  /** For the unguarded side: what Countersign did with the same invoice. */
+  other?: LaneOutcome,
+): { text: string; tone: BoxTone } {
   const amount = o.amountCents !== undefined ? formatCentsShort(o.amountCents) : ''
+  // Paid to the account on file, but Countersign stopped this invoice: not a clean result.
+  if (o.kind === 'paid_on_file' && other && (other.kind === 'blocked' || other.kind === 'held')) {
+    const why = other.reasonCodes?.length ? ` (${other.reasonCodes.join(', ')})` : ''
+    return { text: `${amount} paid, but Countersign ${other.kind} it${why}`, tone: 'warn' }
+  }
   switch (o.kind) {
     case 'paid_off_file':
       return {
@@ -42,20 +54,36 @@ function outcomeBox(o: LaneOutcome, attackerIds: ReadonlySet<string>): { text: s
 }
 
 // Verdicts are solid tiles on a hard ink shadow; unfinished states are plain inner rows.
-const BOX_TONE: Record<'good' | 'bad' | 'plain' | 'quiet', { tone: InkRowTone; text: string }> = {
+const BOX_TONE: Record<BoxTone, { tone: InkRowTone; text: string }> = {
   good: { tone: 'good-fill', text: '' },
   bad: { tone: 'bad-fill', text: '' },
+  // Amber, like the held seal: dark ink on a light amber fill (about 12:1).
+  warn: { tone: 'default', text: '!border-ink !bg-[#f6dfa4] text-fg shadow-[var(--button-shadow)]' },
   plain: { tone: 'default', text: 'text-fg' },
   quiet: { tone: 'default', text: 'text-muted font-semibold' },
 }
 
-function LaneSide({ name, outcome, attackerIds }: { name: string; outcome: LaneOutcome; attackerIds: ReadonlySet<string> }) {
-  const box = outcomeBox(outcome, attackerIds)
+function LaneSide({
+  name,
+  outcome,
+  attackerIds,
+  other,
+}: {
+  name: string
+  outcome: LaneOutcome
+  attackerIds: ReadonlySet<string>
+  other?: LaneOutcome
+}) {
+  const box = outcomeBox(outcome, attackerIds, other)
   return (
     <div className="flex min-w-0 flex-col gap-2" data-lane-outcome={name.toLowerCase()} data-kind={outcome.kind}>
       <div className="font-extrabold">{name}</div>
       <div className="min-h-[1.55em] text-small text-muted">{outcome.words.join(' → ') || '—'}</div>
-      <InkRow tone={BOX_TONE[box.tone].tone} className={cn('rounded-[8px] p-3 font-extrabold', BOX_TONE[box.tone].text)}>
+      <InkRow
+        tone={BOX_TONE[box.tone].tone}
+        data-tone={box.tone}
+        className={cn('rounded-[8px] p-3 font-extrabold', BOX_TONE[box.tone].text)}
+      >
         {box.text}
       </InkRow>
     </div>
@@ -63,7 +91,9 @@ function LaneSide({ name, outcome, attackerIds }: { name: string; outcome: LaneO
 }
 
 export function OneSentencePanel({ invoice, spans, unguarded, countersign, attackerIds, children }: OneSentencePanelProps) {
-  const first = spans?.[0]
+  // Never show a span that is only the blanked reference marker.
+  const real = spans ? meaningfulSpans(spans) : undefined
+  const first = real?.[0]
   return (
     <Card
       as="aside"
@@ -76,20 +106,20 @@ export function OneSentencePanel({ invoice, spans, unguarded, countersign, attac
           <blockquote className="m-0">“{first.quote}”</blockquote>
           <figcaption className="mt-1 text-meta text-muted">
             {invoice?.invoice_number} · line {first.line}
-            {spans.length > 1 && ` · +${spans.length - 1} more`}
+            {real!.length > 1 && ` · +${real!.length - 1} more`}
           </figcaption>
         </Card>
       ) : (
         <InkRow as="p" className="m-0 px-3.5 py-3 font-mono text-small text-muted">
           {!invoice
             ? 'No invoice selected.'
-            : spans
-              ? `No instruction-like text in ${invoice.invoice_number}.`
+            : real
+              ? `No instruction-like text found in ${invoice.invoice_number}.`
               : `Countersign hasn't read ${invoice.invoice_number} yet.`}
         </InkRow>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <LaneSide name="Unguarded" outcome={unguarded} attackerIds={attackerIds} />
+        <LaneSide name="Unguarded" outcome={unguarded} attackerIds={attackerIds} other={countersign} />
         <LaneSide name="Countersign" outcome={countersign} attackerIds={attackerIds} />
       </div>
       {children}

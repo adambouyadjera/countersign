@@ -166,9 +166,7 @@ export function AttackLabPage() {
               </select>
             ) : (
               <InkRow className="flex flex-wrap items-center gap-3 p-3 text-small">
-                <span className="text-muted">
-                  The vendors come from a batch&apos;s invoices (there&apos;s no vendor list endpoint yet).
-                </span>
+                <span className="text-muted">Draw a batch to choose a vendor.</span>
                 <InkButton size="sm" variant="secondary" onClick={() => drawBatch.mutate()} disabled={drawBatch.isPending}>
                   {drawBatch.isPending ? 'drawing…' : 'draw a batch'}
                 </InkButton>
