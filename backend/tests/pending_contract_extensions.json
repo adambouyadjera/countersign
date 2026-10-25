@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "Batch": {
+      "item_id": {"title": "Item Id", "type": "string"},
+      "document_id": {"title": "Document Id", "type": "string"},
+      "invoice_number": {"title": "Invoice Number", "type": "string"}
+    },
+    "InboxItem": {
+      "source": {"default": "inbox", "enum": ["inbox", "attack_lab"], "title": "Source", "type": "string"}
+    }
+  },
+  "schemas": {}
+}

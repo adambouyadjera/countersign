@@ -34,12 +34,21 @@ def create_attack_batch(store: Store, *, vendor_id: str, attack_text: str, place
     if store.get_record("vendors", vendor_id) is None:
         raise ValueError("Vendor not found")
     attack = create_attack("custom", attacker_directory_display(store), attack_text, placement)
-    return _create_invoice_batch(store, kind="attack", custom_vendor_id=vendor_id,
-                                 custom_attack=attack, submitted_attack_text=attack_text)
+    # Allocate and render inside one transaction: independent workers cannot
+    # choose the same suffix, and a failed PDF never consumes a number.
+    with store.transaction():
+        world = seed_trusted_world(store)
+        position = next((index for index, vendor in enumerate(world["vendors"], 1)
+                         if vendor["vendor_id"] == vendor_id), None)
+        if position is None:
+            raise ValueError("Vendor does not belong to the standard invoice batch")
+        invoice_number = store.next_attack_invoice_number(f"INV-{position:03d}")
+        return _create_invoice_batch(store, kind="attack", custom_vendor_id=vendor_id,
+            custom_attack=attack, submitted_attack_text=attack_text, custom_invoice_number=invoice_number)
 
 
 def _create_invoice_batch(store: Store, *, kind: str, custom_vendor_id=None,
-                          custom_attack=None, submitted_attack_text=None) -> Batch:
+                          custom_attack=None, submitted_attack_text=None, custom_invoice_number=None) -> Batch:
     world = seed_trusted_world(store)
     now = datetime.now(timezone.utc)
     invoices = []
@@ -53,6 +62,8 @@ def _create_invoice_batch(store: Store, *, kind: str, custom_vendor_id=None,
     for index, vendor in enumerate(world["vendors"], start=1):
         po = purchase_orders[vendor["purchase_order_ids"][0]]
         invoice_number = f"INV-{index:03d}"
+        if kind == "attack" and vendor["vendor_id"] == custom_vendor_id:
+            invoice_number = custom_invoice_number
         invoice_id = f"invoice-{uuid4().hex}"
         document_id = f"document-{uuid4().hex}"
         spec = InvoiceSpec(
@@ -112,10 +123,17 @@ def _create_invoice_batch(store: Store, *, kind: str, custom_vendor_id=None,
         batch_id=batch_id, kind=kind, created_at=now, invoices=invoices,
     )
     records.append(("batches", batch_id, batch))
+    receipt = None
     with store.transaction():
         store.save_records_atomically(records)
         for document_id, sender in inbox_documents:
-            store.enqueue_inbox(document_id, sender, received_at=now)
+            receipt = store.enqueue_inbox(document_id, sender, received_at=now, source="attack_lab")
+    if receipt is not None:
+        selected = next(invoice for invoice in batch.invoices if invoice.document_id == receipt.document_id)
+        # These receipt fields belong only to POST /attacks. The persisted
+        # Batch and GET /batches response keep their ordinary document list.
+        return batch.model_copy(update={"item_id": receipt.item_id, "document_id": receipt.document_id,
+                                        "invoice_number": selected.invoice_number})
     return batch
 
 

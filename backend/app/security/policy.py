@@ -29,6 +29,22 @@ DEFAULT_INSTRUCTION = (
     "human approval."
 )
 _MONEY = re.compile(r"(?<![\w.])(?:\$|USD\s*)?([0-9][0-9,]*\.[0-9]{2})(?![\d.])")
+_REASON_PRIORITY = {
+    code: index for index, code in enumerate((
+        "BANK_DETAILS_MISMATCH", "UNKNOWN_VENDOR", "UNVERIFIED_SOURCE",
+        "DUPLICATE_INVOICE", "OVER_AUTONOMY_LIMIT", "AMOUNT_MISMATCH",
+        "PLANNER_INVALID", "POLICY_NOT_IMPLEMENTED",
+    ))
+}
+
+
+def ordered_reason_codes(reasons):
+    """Preserve every failure, with the payee mismatch first for review.
+
+    Reason presentation never selects the outcome: a duplicate still BLOCKs
+    even when the bank mismatch is the first visible explanation.
+    """
+    return sorted(dict.fromkeys(reasons), key=lambda code: _REASON_PRIORITY.get(code, len(_REASON_PRIORITY)))
 
 
 def normalize_account(value: Any) -> str:
@@ -324,4 +340,4 @@ class PolicyEngine:
         outcome = "BLOCK" if duplicate else "HOLD" if reasons else "ALLOW"
         return PolicyDecision(decision_id=f"decision-{uuid4().hex}", run_id=run_id,
                               invoice_id=intent.invoice_id, outcome=outcome,
-                              checks=checks, reason_codes=list(dict.fromkeys(reasons)))
+                              checks=checks, reason_codes=ordered_reason_codes(reasons))

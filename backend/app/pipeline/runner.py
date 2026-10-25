@@ -28,7 +28,7 @@ from app.pipeline.unguarded_tools import UnguardedTools
 from app.pipeline.payments import DuplicatePaymentError, PaymentExecutor, refresh_run_tallies
 from app.security.graph import build_graph
 from app.security.labels import DocumentSpan, Labeled
-from app.security.policy import PolicyEngine
+from app.security.policy import PolicyEngine, ordered_reason_codes
 from app.security.handles import HandleTable
 from app.security.interpreter import Interpreter
 from app.security.leak_guard import ProvenanceLeakError
@@ -687,7 +687,8 @@ class RunManager:
                 if not self.store.claim_session_payment(number, f"dry-run:{run.run_id}:{invoice.invoice_id}",
                         vendor_id=vendor_id, amount_cents=amount, run_id=run.run_id,
                         invoice_id=invoice.invoice_id, **references):
-                    decision.outcome, decision.reason_codes = "BLOCK", ["DUPLICATE_INVOICE"]
+                    decision.outcome = "BLOCK"
+                    decision.reason_codes = ordered_reason_codes([*decision.reason_codes, "DUPLICATE_INVOICE"])
                     for check in decision.checks:
                         if check.code == "NOT_DUPLICATE":
                             check.passed = False
@@ -714,7 +715,7 @@ class RunManager:
             except DuplicatePaymentError:
                 # The DB reservation closes the race between evaluation and I/O.
                 decision.outcome = "BLOCK"
-                decision.reason_codes = ["DUPLICATE_INVOICE"]
+                decision.reason_codes = ordered_reason_codes([*decision.reason_codes, "DUPLICATE_INVOICE"])
                 for check in decision.checks:
                     if check.code == "NOT_DUPLICATE":
                         check.passed = False

@@ -62,6 +62,32 @@ def check(decision, code):
     return next(value for value in decision.checks if value.code == code)
 
 
+@pytest.mark.parametrize("verified", [True, False])
+def test_duplicate_and_bank_mismatch_keep_all_failures_and_graph_nodes(world, verified):
+    from app.contract_models import FieldsExtractedPayload
+    from app.security.graph import build_graph
+
+    record = world["store"].get_record("documents", "doc-1")
+    quote = "Account number: 999900009999"
+    record["text"]["pages"][0]["lines"][4]["text"] = quote
+    world["store"].save_record("documents", "doc-1", record)
+    account = Labeled("999900009999", {DocumentSpan("doc-1", 1, 5, 0, len(quote), verified)})
+    intent = replace(world["intent"], to_account=account)
+    assert world["store"].claim_session_payment("INV-001", "prior", vendor_id="VEN-001", amount_cents=125000)
+    decision = evaluate(world, intent=intent, fields={**world["fields"], "remit_account_number": account})
+    assert decision.outcome == "BLOCK"
+    assert decision.reason_codes[0] == "BANK_DETAILS_MISMATCH"
+    assert "DUPLICATE_INVOICE" in decision.reason_codes
+    assert ("UNVERIFIED_SOURCE" in decision.reason_codes) is (not verified)
+    assert len(decision.checks) == 7
+    graph = build_graph(run_id="run-1", invoice_id="invoice-1", document=DocumentText.model_validate(record["text"]),
+        extraction=FieldsExtractedPayload(invoice_id="invoice-1", extractor_model="offline-test",
+            fields=[], instruction_like_spans=[], handles=[]), steps=[], decision=decision, intent=intent,
+        vendors=world["store"].list_records("vendors"), purchase_orders=world["store"].list_records("purchase_orders"))
+    assert {node.label for node in graph.nodes if node.kind == "policy_check" and node.status == "failed"} == {
+        item.code for item in decision.checks if not item.passed}
+
+
 def test_all_checks_pass_in_the_contract_order(world):
     decision = evaluate(world)
     assert decision.outcome == "ALLOW" and decision.reason_codes == []

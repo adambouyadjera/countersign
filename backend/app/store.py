@@ -287,12 +287,14 @@ class Store:
                            (document_id, item.item_id))
         return item
 
-    def enqueue_inbox(self, document_id: str, sender: str, received_at=None) -> InboxItem:
+    def enqueue_inbox(self, document_id: str, sender: str, received_at=None, *, source="inbox") -> InboxItem:
         """Accept one durable inbox item per document, even across workers."""
         if not isinstance(document_id, str) or not document_id.strip():
             raise ValueError("A nonempty inbox document ID is required")
         if not isinstance(sender, str) or not sender.strip():
             raise ValueError("A nonempty inbox sender is required")
+        if source not in {"inbox", "attack_lab"}:
+            raise ValueError("Inbox source must be inbox or attack_lab")
         with self.transaction():
             existing = self._inbox_identity(document_id)
             if existing is not None and existing.status != "queued":
@@ -326,12 +328,33 @@ class Store:
             item = InboxItem(item_id="inbox-" + hashlib.sha256(document_id.encode()).hexdigest(),
                              document_id=document_id, sender=sender,
                              received_at=received_at or datetime.now(timezone.utc),
+                             source=source,
                              status=("processing" if prior[0] else "processed") if prior else "queued",
                              **({"run_id": prior[2]} if prior else {}))
             self.save_record("inbox_items", item.item_id, item)
             self._db().execute("INSERT INTO inbox_document_keys (document_id, item_id) VALUES (?, ?)",
                                (document_id, item.item_id))
             return item
+
+    def next_attack_invoice_number(self, base_number: str) -> str:
+        """Allocate a per-base suffix in the caller's batch transaction.
+
+        The metadata counter survives reset/restart and serializes independent
+        SQLite connections. Failed document/batch creation rolls it back when
+        the caller owns an outer transaction.
+        """
+        if not isinstance(base_number, str) or not base_number.strip() or len(base_number) > 100:
+            raise ValueError("A server-assigned base invoice number is required")
+        key = "attack_invoice_sequence:" + base_number
+        with self.transaction() as connection:
+            row = connection.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
+            previous = int(row["value"]) if row is not None else 0
+            if previous < 0:
+                raise ValueError("Attack invoice sequence requires review")
+            sequence = previous + 1
+            connection.execute("INSERT INTO metadata(key, value) VALUES (?, ?) "
+                               "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(sequence)))
+            return f"{base_number}-A{sequence}"
 
     def claim_inbox(self, run_id: str, document_ids=None) -> list[InboxItem]:
         """Permanently admit queued documents once before any external work."""

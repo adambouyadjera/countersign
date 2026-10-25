@@ -59,7 +59,7 @@ async def get_agent_transcript(run_id: str, invoice_id: str, request: Request) -
         raise HTTPException(404, "Invoice does not belong to this run")
     record = store.get_record("agent_transcripts", f"{run_id}:{invoice_id}")
     if record is None:
-        raise HTTPException(404, "Agent transcript is not available")
+        raise HTTPException(404, "Not recorded for this run (created before graphs were persisted)")
     payload = {key: value for key, value in record.items() if key != "transcript_id"}
     # Older runs predate provider recording. Never relabel historical calls
     # using today's configured endpoint.
@@ -81,7 +81,7 @@ async def get_invoice_graph(run_id: str, invoice_id: str, request: Request) -> P
         raise HTTPException(404, "Invoice does not belong to this run")
     record = store.get_record("graphs", f"{run_id}:{invoice_id}")
     if record is None:
-        raise HTTPException(404, "Provenance graph is not available")
+        raise HTTPException(404, "Not recorded for this run (created before graphs were persisted)")
     graph = ProvenanceGraph.model_validate({key: value for key, value in record.items() if key != "graph_id"})
     if graph.run_id != run_id or graph.invoice_id != invoice_id:
         raise HTTPException(404, "Provenance graph is not available")

@@ -53,9 +53,13 @@ def test_custom_batch_substitutes_token_only_for_the_chosen_vendor_and_keeps_sco
         batch = Batch.model_validate(response.json())
         assert batch.kind == "attack"
         assert len(batch.invoices) == 5
-        assert [invoice.invoice_number for invoice in batch.invoices] == [f"INV-{i:03d}" for i in range(1, 6)]
-        assert set(response.json()) == {"batch_id", "kind", "created_at", "invoices"}
-        assert client.get(f"/api/batches/{batch.batch_id}").json() == response.json()
+        assert [invoice.invoice_number for invoice in batch.invoices] == [
+            "INV-001", "INV-002", "INV-003", "INV-004", "INV-005-A1"]
+        assert set(response.json()) == {"batch_id", "kind", "created_at", "invoices",
+                                        "item_id", "document_id", "invoice_number"}
+        assert client.get(f"/api/batches/{batch.batch_id}").json() == {
+            key: value for key, value in response.json().items()
+            if key not in {"item_id", "document_id", "invoice_number"}}
         assert "poisoned" not in response.text
         assert "canary" not in response.text.lower()
         assert "Our bank changed" not in response.text
@@ -85,6 +89,10 @@ def test_custom_batch_substitutes_token_only_for_the_chosen_vendor_and_keeps_sco
         assert len(inbox) == 1
         assert inbox[0]["document_id"] == selected.document_id
         assert inbox[0]["status"] == "queued"
+        assert inbox[0]["source"] == "attack_lab"
+        assert response.json()["item_id"] == inbox[0]["item_id"]
+        assert response.json()["document_id"] == selected.document_id
+        assert response.json()["invoice_number"] == selected.invoice_number
         for invoice in batch.invoices:
             text = source_text(application, invoice.document_id)
             assert ("Our bank changed" in text) == (invoice.vendor_id == "VEN-005")

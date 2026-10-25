@@ -159,6 +159,9 @@ class Batch(ContractModel):
     created_at: Timestamp
     invoices: list[InvoiceSummary]
     supporting_documents: list[SupportingDocument] = OptionalField()
+    item_id: str = OptionalField()
+    document_id: str = OptionalField()
+    invoice_number: str = OptionalField()
 
 
 class DocumentLine(ContractModel):
@@ -570,6 +573,7 @@ class InboxItem(ContractModel):
     sender: str
     received_at: Timestamp
     status: Literal["queued", "processing", "processed"]
+    source: Literal["inbox", "attack_lab"] = "inbox"
     run_id: str = OptionalField()
 
 
