@@ -115,7 +115,14 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ],
   ['GET', /^\/api\/balances$/, () => ok(fixtures.balances)],
   ['POST', /^\/api\/redteam$/, () => ok(fixtures.redteamJob)],
-  ['GET', /^\/api\/redteam\/([^/]+)$/, (m) => byId(m[1], fixtures.redteamJob.job_id, fixtures.redteamJob, 'job')],
+  [
+    'GET',
+    /^\/api\/redteam\/([^/]+)$/,
+    (m) =>
+      m[1] === fixtures.recordedRedteam.job_id
+        ? ok(fixtures.recordedRedteam)
+        : byId(m[1], fixtures.redteamJob.job_id, fixtures.redteamJob, 'job'),
+  ],
   ['POST', /^\/api\/audit\/ask$/, () => ok(fixtures.auditAnswer)],
   ['GET', /^\/api\/people$/, () => ok(fixtures.people)],
   [

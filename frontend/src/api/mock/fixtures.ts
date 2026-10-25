@@ -13,6 +13,8 @@ import evalJob from '@fixtures/eval_job.json'
 // The backend's saved responses for the two recorded planted-errors jobs (mock mode only).
 import { job as recordedEvalBefore } from '@evidence/eval_results.json'
 import { job as recordedEvalAfter } from '@evidence/eval_results_after_semantic.json'
+// The backend's saved response for the recorded red-team job (mock mode only).
+import recordedRedteam from '@evidence/redteam_api_redteam-dcb67a52ba40438d8dfcd1af4a36ad8b.json'
 import graphInv003 from '@fixtures/graph_INV-003.json'
 import health from '@fixtures/health.json'
 import inbox from '@fixtures/inbox.json'
@@ -41,6 +43,7 @@ export const fixtures = {
   evalJob,
   recordedEvalBefore,
   recordedEvalAfter,
+  recordedRedteam,
   graphInv003,
   health,
   inbox,
