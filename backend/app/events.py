@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import anyio
 from collections import defaultdict
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
@@ -142,9 +143,13 @@ class EventBus:
                     yield event
         finally:
             if registered:
-                async with self._lock:
-                    subscribers = self._subscribers.get(run_id)
-                    if subscribers is not None:
-                        subscribers.discard(queue)
-                        if not subscribers:
-                            self._subscribers.pop(run_id, None)
+                # SSE task-group cancellation remains active while this
+                # generator unwinds. Shield at the lock wait itself: an outer
+                # aclose() cannot repeat a finally that cancellation aborted.
+                with anyio.CancelScope(shield=True):
+                    async with self._lock:
+                        subscribers = self._subscribers.get(run_id)
+                        if subscribers is not None:
+                            subscribers.discard(queue)
+                            if not subscribers:
+                                self._subscribers.pop(run_id, None)

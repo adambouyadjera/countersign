@@ -85,6 +85,13 @@ mismatched context remains blocked. Staleness is computed, not trusted from a
 stored flag. Rejection is recorded in approval/audit history without creating
 a monetary journal for a held bill that was never posted.
 
+`.venv/bin/pytest -q tests/test_approvals.py tests/test_contract.py --tb=short`:
+`115 passed, 2 warnings in 2.22s`.
+`.venv/bin/pytest -q tests/test_approval_sod.py --tb=short`:
+`31 passed, 1 warning in 1.72s`.
+An initial command named nonexistent `tests/test_approval_roles.py` and exited
+4 (`no tests ran`); the actual SoD module above was then located and run.
+
 ## Item 5 — reconciliation difference
 
 Reproduced against a read-only copy of the running database

@@ -1,8 +1,13 @@
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Request
+import anyio
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from sse_starlette import EventSourceResponse, ServerSentEvent
+from starlette.requests import ClientDisconnect
+
+from app.api.event_stream import RunEventSourceResponse
 
 from app.contract_models import AgentTranscript, Batch, ErrorResponse, PlannerTranscript, PolicyDecision, ProvenanceGraph, Run, RunRequest
 from app.security.graph import overlay_resolution
@@ -10,6 +15,7 @@ from app.security.presentation import display_model, is_reference_marker, marker
 
 
 router = APIRouter()
+SSE_HEARTBEAT_SECONDS = 15
 
 
 @router.post("/runs", response_model=Run, operation_id="create_run",
@@ -119,21 +125,34 @@ async def get_run_events(
     run_id: str,
     request: Request,
     last_event_id: Annotated[int, Header(alias="Last-Event-ID", ge=0)] = 0,
+    after_seq: Annotated[int, Query(ge=0)] = 0,
 ) -> EventSourceResponse:
     if request.app.state.store.get_run(run_id) is None:
         raise HTTPException(status_code=404, detail="Run not found")
 
     async def messages() -> AsyncIterator[ServerSentEvent]:
-        async for event in request.app.state.event_bus.subscribe(run_id, last_event_id):
-            hidden = (_hidden_marker_nodes(request.app.state.store, run_id, event.payload.decision.invoice_id)
-                      if event.type == "policy.decision" else frozenset())
-            yield ServerSentEvent(
-                id=str(event.seq), event=event.type, data=display_model(event, hidden).model_dump_json()
-            )
+        # Automatic browser retries can advance the header beyond the query
+        # cursor used when that EventSource was originally opened.
+        subscription = request.app.state.event_bus.subscribe(run_id, max(last_event_id, after_seq))
+        try:
+            async for event in subscription:
+                if await request.is_disconnected():
+                    return
+                hidden = (_hidden_marker_nodes(request.app.state.store, run_id, event.payload.decision.invoice_id)
+                          if event.type == "policy.decision" else frozenset())
+                yield ServerSentEvent(
+                    id=str(event.seq), event=event.type, data=display_model(event, hidden).model_dump_json()
+                )
+        except (ClientDisconnect, asyncio.CancelledError):
+            return
+        finally:
+            with anyio.CancelScope(shield=True):
+                await subscription.aclose()
 
-    return EventSourceResponse(
+    return RunEventSourceResponse(
         messages(),
-        ping=15,
-        ping_message_factory=lambda: ServerSentEvent(comment="heartbeat"),
+        request=request,
+        ping=SSE_HEARTBEAT_SECONDS,
+        ping_message_factory=lambda: ServerSentEvent(comment="keep-alive"),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
