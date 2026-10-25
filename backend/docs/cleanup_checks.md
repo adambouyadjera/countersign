@@ -30,3 +30,23 @@ Validation: `.venv/bin/pytest -q tests/test_policy.py tests/test_runs.py tests/t
 ```text
 61 passed, 1 warning in 2.67s
 ```
+
+## Item 2 — fresh intake identity and immediate admission
+
+Initial command: `PYTHONPATH=. .venv/bin/pytest -q -s /tmp/test_cleanup_item2.py --tb=short`.
+It failed: three submissions all printed `INV-001`, exposed only the four old
+batch keys, and their inbox records had no source. Admission latency was
+0.087/0.047/0.052 seconds: model-induced admission delay was not reproduced.
+
+Fresh numbers are now transactional, per-base, persistent across reset/restart,
+and rolled back on PDF failure. The POST receipt names the admitted document and
+inbox item, and intake provenance is server-assigned. The ordinary batch shape
+is preserved. Gating the first model call allowed two more submissions in
+0.052/0.047/0.046 seconds: all three were received/extracted exactly once.
+Semantic duplicate controls remain enforced independently of invoice numbers.
+
+Verification: `.venv/bin/pytest -q tests/test_attack_intake.py tests/test_custom_attacks.py tests/test_custom_attack_runs.py tests/test_autopilot.py tests/test_contract.py --tb=short`.
+
+```text
+140 passed, 3 warnings in 9.02s
+```

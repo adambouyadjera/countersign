@@ -199,3 +199,25 @@ missing/error observations are reported separately. Planner hashes are over
 the exact serialized prompt, including real handle-verification flags and
 validation feedback. Different error shapes are measured, never normalized
 away to force a count of one.
+
+## Cleanup item 2 — Attack Lab intake receipts (proposed, not applied)
+
+Add optional string fields `item_id`, `document_id`, and `invoice_number` to
+`Batch`. POST `/api/attacks` includes these receipt fields for the invoice
+chosen by the submitting caller. The saved batch and ordinary batch responses
+retain their existing shape. Attack submissions allocate persistent,
+transactional numbers `INV-001-A1`, `INV-001-A2`, etc. for that vendor's base
+invoice; vendor, amount and PO are unchanged. Fresh numbers do not bypass the
+semantic duplicate control.
+
+Add `source?: "attack_lab" | "inbox"` to `InboxItem`, default `"inbox"` for
+legacy records. Only the server sets it: `/api/attacks` uses `attack_lab`, and
+`/api/inbox` uses `inbox`; repeated admission of the same document preserves
+the original receipt and source. The field also appears in `inbox.received`.
+
+The receipt is an explicit exception for an Attack Lab submission whose caller
+already selected the vendor. Standard/ordinary attack batch listings still
+contain no poisoned flag, attack text, canary or scoring metadata. No existing
+field, enum member, endpoint or validation is removed. The exact pending
+additive schemas are pinned in `tests/pending_contract_extensions.json`;
+contract parity still compares every published schema field and endpoint.
