@@ -292,3 +292,25 @@ and the opening account row written by the seed), false for real postings and
 verified bank changes. It is computed on read and never stored. The
 `VENDOR_HISTORY` policy message adds "(includes seeded demo history)" whenever
 the counted payments or the cited verification come from that archive.
+
+## SSE connection lifecycle and browser resume (proposed, not applied)
+
+Add optional query parameter `after_seq` to
+`GET /api/runs/{run_id}/events`: integer, minimum 0, default 0. Keep the existing
+`Last-Event-ID` header unchanged. Replay only sequences strictly greater than
+`max(Last-Event-ID, after_seq)`, then continue live without a replay/subscribe
+gap. The maximum handles native browser retries whose header has advanced
+beyond the initial URL cursor. Invalid or negative cursors return the existing
+422 `ErrorResponse` (`validation_error`). Run completion still permits later
+approval events.
+
+Document the existing 15-second comment heartbeat as `: keep-alive` followed
+by a blank line. Comments have no event ID and do not move the replay cursor.
+No RunEvent payload or SSE event type is added, removed, renamed, or relaxed.
+
+Frontend integration required (read-only in this backend task):
+`frontend/src/api/runStream.ts` supplies `opts.lastEventId`, but
+`frontend/src/api/transport.ts` currently discards it when creating a fresh
+`EventSource`. Append `after_seq=<lastEventId>` to that URL before constructing
+the browser source. The existing mock already honors the option. No shared
+contract or frontend file was edited here.
