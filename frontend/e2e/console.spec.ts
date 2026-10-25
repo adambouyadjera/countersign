@@ -23,6 +23,8 @@ test('mock run: INV-003 is the failed round and the approval card is shown', asy
 
   await expect(page.getByTestId('sig-status')).toContainText('held INV-003')
   await expect(page.locator('[data-invoice="INV-003"]')).toHaveAttribute('data-status', 'held')
+  // The marks are explained on screen.
+  await expect(page.getByRole('list', { name: 'What the marks mean' })).toContainText('⚑ held')
 
   const duel = page.getByRole('region', { name: 'Duel transcript' })
   const failed = duel.locator('[data-failed="true"]').first()

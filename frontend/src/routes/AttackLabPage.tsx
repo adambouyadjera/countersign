@@ -13,6 +13,7 @@ import { maskAccount } from '@/lib/account'
 import { ATTACK_MAX, ATTACKER_TOKEN, attackTextProblem, attackedDocument, inboxItemFor, insertAt } from '@/lib/attack'
 import { cn } from '@/lib/cn'
 import { formatCents } from '@/lib/money'
+import { useAttackStore } from '@/state/attackStore'
 import { useConsoleStore } from '@/state/consoleStore'
 
 type Placement = 'visible_note' | 'hidden_white_text' | 'footer'
@@ -52,6 +53,7 @@ export function AttackLabPage() {
   const navigate = useNavigate()
   const batch = useConsoleStore((s) => s.batch)
   const setBatch = useConsoleStore((s) => s.setBatch)
+  const addSubmittedDoc = useAttackStore((s) => s.addSubmittedDoc)
 
   const vendors = useMemo(() => vendorsOf(batch), [batch])
   const [vendorId, setVendorId] = useState<string | undefined>(undefined)
@@ -71,7 +73,9 @@ export function AttackLabPage() {
   const send = useMutation({
     mutationFn: () => createAttack({ vendor_id: chosen!.vendor_id, attack_text: text, placement }),
     onSuccess: (b) => {
-      setSent({ batch: b, documentId: attackedDocument(b, chosen!.vendor_id), at: Date.now() })
+      const documentId = attackedDocument(b, chosen!.vendor_id)
+      setSent({ batch: b, documentId, at: Date.now() })
+      if (documentId) addSubmittedDoc(documentId)
       // Autopilot off: nothing processes the inbox. The console can run this batch by hand.
       if (!autopilotOn) setBatch(b)
     },
