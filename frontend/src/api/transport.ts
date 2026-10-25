@@ -26,8 +26,6 @@ export interface Transport {
   openEventSource: (url: string, opts?: { lastEventId?: number }) => RunEventSource
 }
 
-export const EVENT_SOURCE_CLOSED = 2
-
 const browserTransport: Transport = {
   fetch: (url, init) => globalThis.fetch(url, init),
   openEventSource: (url) => new EventSource(url) as unknown as RunEventSource,

@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseJsonl, runBothEventsText } from '@/api/mock/fixtures'
 import { setTransportForTests, type RunEventSource } from '@/api/transport'
+import { openStreamCount } from '@/api/runStream'
 import { useRunEvents } from './useRunEvents'
 
 const events = parseJsonl(runBothEventsText)
@@ -91,8 +92,13 @@ describe('useRunEvents', () => {
       first.fail()
     })
     expect(result.current.stream).toBe('reconnecting')
+    expect(first.readyState).toBe(2)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(600)
+      await vi.advanceTimersByTimeAsync(999)
+    })
+    expect(opened).toHaveLength(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
     })
     expect(opened).toHaveLength(2)
     const second = opened[1]!
@@ -157,5 +163,58 @@ describe('useRunEvents', () => {
     })
     expect(result.current.state.events.map((e) => e.seq)).toEqual([1, 2, 3])
     expect(result.current.stream).toBe('open')
+  })
+
+  it('shares one connection per run between subscribers and closes it with the last one', async () => {
+    const a = renderHook(() => useRunEvents(RUN_ID))
+    await flush()
+    act(() => {
+      opened[0]!.open()
+      opened[0]!.send(events[0]!)
+      opened[0]!.send(events[1]!)
+    })
+    // A second component joins late: same connection, and it is replayed what arrived so far.
+    const b = renderHook(() => useRunEvents(RUN_ID))
+    await flush()
+    expect(opened).toHaveLength(1)
+    expect(openStreamCount()).toBe(1)
+    expect(b.result.current.state.events.map((e) => e.seq)).toEqual([1, 2])
+    expect(b.result.current.stream).toBe('open')
+    act(() => opened[0]!.send(events[2]!))
+    expect(a.result.current.state.lastSeq).toBe(3)
+    expect(b.result.current.state.lastSeq).toBe(3)
+    a.unmount()
+    expect(opened[0]!.readyState).toBe(1)
+    b.unmount()
+    expect(opened[0]!.readyState).toBe(2)
+    expect(openStreamCount()).toBe(0)
+  })
+
+  it('closes on every error (even one the browser would retry itself) and backs off 1, 2, 5, 10, 10 s', async () => {
+    vi.useFakeTimers()
+    renderHook(() => useRunEvents(RUN_ID))
+    await flush()
+    const gaps: number[] = []
+    for (let i = 0; i < 5; i++) {
+      const es = opened[opened.length - 1]!
+      // readyState 0: the browser would keep this connection and retry on its own.
+      act(() => {
+        es.readyState = 0
+        es.onerror?.(new Event('error'))
+      })
+      expect(es.readyState).toBe(2)
+      const before = opened.length
+      let waited = 0
+      while (opened.length === before) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500)
+        })
+        waited += 500
+      }
+      gaps.push(waited)
+    }
+    expect(gaps).toEqual([1000, 2000, 5000, 10000, 10000])
+    // Only the newest connection is open; every failed one was closed.
+    expect(opened.filter((e) => e.readyState !== 2)).toHaveLength(1)
   })
 })
