@@ -273,3 +273,12 @@ booked payment from both lanes.
 reset leaves autopilot disabled, as before. With `autopilot: true` it enables
 autopilot for both lanes (`["countersign", "unguarded"]`) and creates a fresh
 autopilot run after the reset. The response is unchanged (`ResetResponse`).
+
+## Cleanup item 10 — audit ask timeout and rate limit statuses
+
+Document two additional responses for `POST /api/audit/ask`, both using the
+existing error envelope and existing codes: HTTP 504 with code
+`service_unavailable` when Agent Builder has not answered within 140 s, and
+HTTP 429 with code `rate_limited` when Elastic Agent Builder itself returns
+HTTP 429. Exact bodies are in `backend/docs/elastic_notes.md`. All other
+failures keep the existing 503.

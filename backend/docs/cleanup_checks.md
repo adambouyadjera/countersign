@@ -156,3 +156,13 @@ run-1b936c2ea67f4236b644609ac7c72089: 70 events, one unguarded off-file payment.
 The two row tools return `evidence_source` and the agent instructions explain it
 (re-provisioned with `scripts/setup_elastic_agent.py`). The real answer and its
 ES|QL steps are saved in `docs/elastic_answers.json`.
+
+## Item 10 — auditor timeout
+
+Confirmed the delay is Elastic's: our flush is 0.29-0.57 s and our parsing about
+1 ms per question, while the Agent Builder converse call took 12.7-83.8 s, and
+in four of five measurements ended in HTTP 429 from Elastic, which the route
+reported as a generic 503. There was no server-side limit (only the 180 s HTTP
+client timeout). Added a 140 s limit returning 504 with a clear message, and a
+429 `rate_limited` response for Elastic's 429. Shapes in `docs/elastic_notes.md`;
+tests in `tests/test_audit_timeout.py`.

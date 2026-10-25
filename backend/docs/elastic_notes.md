@@ -151,3 +151,54 @@ uses converse directly; it does not claim to implement MCP or A2A clients.
 Sources: [MCP server](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/mcp-server),
 [MCP protocol API guidance](https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-agent-builder-mcp),
 [A2A server](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/a2a-server).
+
+## POST /api/audit/ask responses and timing (cleanup item 10)
+
+Timing split, measured in-process against live Elastic (other adapters offline,
+copy of the running database): our code before converse is the scoped outbox
+flush and `_refresh` (0.29-0.57 s); parsing and display take about 1 ms. The rest
+is the Agent Builder converse call: 12.7-83.8 s per question in five
+measurements on 2026-10-25, four of which ended in HTTP 429 from Elastic
+(rate limiting), and one successful answer in 19.0 s end to end. The long waits
+are Elastic's, not Countersign's.
+
+The route stops waiting after 140 s (`AUDIT_ASK_TIMEOUT_SECONDS`), cancelling the
+converse request. Exact response bodies:
+
+200 (contract `AuditAnswer`):
+
+```json
+{"answer": "<markdown text>", "agent_id": "countersign-audit-analyst",
+ "conversation_id": "<id, optional>",
+ "steps": [{"tool_id": "payments_to_accounts_not_on_file", "esql": "FROM countersign-events | ...", "row_count": 1}]}
+```
+
+504, no answer within 140 s:
+
+```json
+{"error": {"code": "service_unavailable", "message": "The Elastic auditor did not answer within 140 s. Agent Builder runs its own queries and model calls; try again, or ask about one run."}}
+```
+
+429, Elastic Agent Builder returned HTTP 429:
+
+```json
+{"error": {"code": "rate_limited", "message": "Elastic Agent Builder is rate limiting requests (HTTP 429 from Elastic); wait a minute and ask again."}}
+```
+
+503, any other Agent Builder or delivery failure (unchanged):
+
+```json
+{"error": {"code": "service_unavailable", "message": "Elastic Agent Builder audit is unavailable; check Elastic health and agent configuration."}}
+```
+
+503, `ELASTIC_MODE=offline` (unchanged):
+
+```json
+{"error": {"code": "service_unavailable", "message": "Elastic audit is offline (ELASTIC_MODE=offline); Agent Builder answers are unavailable."}}
+```
+
+422, empty question (unchanged):
+
+```json
+{"error": {"code": "validation_error", "message": "Audit question must be nonempty."}}
+```
