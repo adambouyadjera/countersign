@@ -229,3 +229,66 @@ Document the message for an invoice lacking a saved historical graph or agent
 transcript: `Not recorded for this run (created before graphs were persisted)`.
 Unknown runs and invoices retain their current distinct 404 messages. No
 recorded evidence is reconstructed, and no schema is removed or renamed.
+
+## Cleanup item 4 — stale approval visibility and rejection
+
+Add optional `Approval.stale?: boolean`. The server derives it from the original
+approval context and current session; callers cannot override it. Both
+pending/resolved lists and resolution responses always include the computed
+flag; it is omitted where it is not computed (older serialized fixtures and the
+recorded bank-change evidence, which stays byte-identical). A stale hold can be rejected once by an
+authorized actor, subject to the same requester/role/amount checks. Rejection
+emits `approval.resolved` into the original run and durable audit; a held bill
+has no journal entry to reverse, so rejection posts no fictitious ledger entry.
+
+Paying a stale hold still returns HTTP 409 with the existing error envelope and
+message `This hold is from an earlier server session; re-run the batch to approve.`
+Missing/mismatched original authority remains blocked. No field, role, limit,
+SoD requirement or existing valid approval path is removed.
+
+## Cleanup item 5 — reconciliation scope and exclusions
+
+Add optional `Reconciliation.scope?: "countersign_lane"` and
+`Reconciliation.excluded?: ReconciliationExclusion[]`, where
+`ReconciliationExclusion = { reason: "unguarded_lane" | "before_books_started";
+label: string; side: "bank" | "ledger"; count: integer; amount_cents: integer;
+transfer_ids: string[] }`.
+
+`difference_cents` now compares Countersign's ledger with Countersign-lane bank
+movements. Unguarded-lane transfers (bank side) and their journal entries
+(ledger side) are excluded from the difference and reported as
+`unguarded_lane` groups. Current-session transfers submitted before the
+reconciliation baseline was captured, with no journal entry, are reported as
+`before_books_started` (label "before books started"). Every excluded transfer
+ID is listed. Bank activity this application never submitted is not excluded:
+it stays `bank_only` and counts toward the difference. Existing fields, item
+statuses and notes are unchanged; the trial balance still includes every
+booked payment from both lanes.
+
+## Cleanup item 7 — demo reset body
+
+`POST /api/demo/reset` accepts an optional JSON body
+`DemoResetRequest = { autopilot?: boolean }` (no other properties; 422
+`validation_error` otherwise). Without a body, or with `autopilot: false`, the
+reset leaves autopilot disabled, as before. With `autopilot: true` it enables
+autopilot for both lanes (`["countersign", "unguarded"]`) and creates a fresh
+autopilot run after the reset. The response is unchanged (`ResetResponse`).
+
+## Cleanup item 10 — audit ask timeout and rate limit statuses
+
+Document two additional responses for `POST /api/audit/ask`, both using the
+existing error envelope and existing codes: HTTP 504 with code
+`service_unavailable` when Agent Builder has not answered within 140 s, and
+HTTP 429 with code `rate_limited` when Elastic Agent Builder itself returns
+HTTP 429. Exact bodies are in `backend/docs/elastic_notes.md`. All other
+failures keep the existing 503.
+
+## Cleanup item 11 — vendor archive flags
+
+Add optional `archive?: boolean` to `VendorAccountHistory` and `VendorPayment`.
+`GET /api/vendors/{vendor_id}` always includes it: true for the seeded
+January-June demo archive (payments with `example-history-*` journal references,
+and the opening account row written by the seed), false for real postings and
+verified bank changes. It is computed on read and never stored. The
+`VENDOR_HISTORY` policy message adds "(includes seeded demo history)" whenever
+the counted payments or the cited verification come from that archive.

@@ -5,10 +5,15 @@ from datetime import datetime, timezone
 import hashlib
 
 from app.adapters.bank import BankError
-from app.contract_models import Reconciliation, ReconciliationItem
+from app.contract_models import Reconciliation, ReconciliationExclusion, ReconciliationItem
 
 
 _REJECTED = {"failed", "rejected", "cancelled", "canceled", "error"}
+
+_LABELS = {
+    "unguarded_lane": "unguarded lane (comparison agent, not Countersign's payments)",
+    "before_books_started": "before books started",
+}
 
 
 class Reconciler:
@@ -60,6 +65,15 @@ class Reconciler:
             return baseline
 
     async def reconcile(self):
+        """Countersign's books against Countersign-lane bank movements.
+
+        Left out of the difference, but reported with counts and every ID:
+        - the unguarded lane's transfers and their journal entries (the comparison agent);
+        - current-session transfers made before the books started (before the baseline was
+          captured) that never got a journal entry.
+        Bank activity this app never submitted stays bank_only and counts: unknown money is
+        never excluded.
+        """
         baseline = await self.ensure_baseline()
         account = baseline["account_id"]
         prior = set(baseline["prior_activity_ids"])
@@ -67,7 +81,48 @@ class Reconciler:
                     if item.transfer_id not in prior and item.status.casefold() not in _REJECTED]
         if any(item.cash_change_cents is None for item in activity):
             raise BankError("New company-account activity has unknown routing direction; manual reconciliation is required.")
-        cash = self.ledger.cash_entries(since=self.store.session_started_at, bank_mode=self.bank.mode)
+        all_cash = self.ledger.cash_entries(since=self.store.session_started_at, bank_mode=self.bank.mode)
+        transfers = {row["transfer_id"]: row for row in self.store.list_records("transfers") if row.get("transfer_id")}
+        lane = lambda transfer_id: (transfers.get(transfer_id) or {}).get("lane")
+        booked = {entry["transfer_id"] for entry in all_cash if entry.get("transfer_id")}
+        session = self.store.session_started_at.isoformat()
+        books_started = datetime.fromisoformat(baseline["captured_at"])
+
+        def submitted_at(row):
+            try:
+                at = datetime.fromisoformat(str(row.get("ts", "")).replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+        def before_books(transfer_id):
+            row = transfers.get(transfer_id)
+            at = submitted_at(row) if row is not None else None
+            return (at is not None and transfer_id not in booked
+                    and row.get("session_started_at") == session and at < books_started)
+
+        groups = {}
+
+        def exclude(reason, side, transfer_id, amount_cents):
+            group = groups.setdefault((reason, side), {"transfer_ids": [], "amount_cents": 0})
+            group["transfer_ids"].append(transfer_id)
+            group["amount_cents"] += abs(amount_cents)
+
+        included_activity = []
+        for item in activity:
+            if lane(item.transfer_id) == "unguarded":
+                exclude("unguarded_lane", "bank", item.transfer_id, item.cash_change_cents)
+            elif before_books(item.transfer_id):
+                exclude("before_books_started", "bank", item.transfer_id, item.cash_change_cents)
+            else:
+                included_activity.append(item)
+        cash = []
+        for entry in all_cash:
+            if entry.get("transfer_id") and lane(entry["transfer_id"]) == "unguarded":
+                exclude("unguarded_lane", "ledger", entry["transfer_id"], entry["cash_change_cents"])
+            else:
+                cash.append(entry)
+        activity = included_activity
         by_id = {}
         for entry in cash:
             by_id.setdefault(entry["transfer_id"], []).append(entry)
@@ -91,8 +146,13 @@ class Reconciler:
                     note="Cash journal entry has no matching bank register ID and signed amount in this session. Reversals remain separate immutable entries."))
         bank_change = sum(item.cash_change_cents for item in activity)
         ledger_change = sum(entry["cash_change_cents"] for entry in cash)
+        excluded = [ReconciliationExclusion(reason=reason, label=_LABELS[reason], side=side,
+                        count=len(group["transfer_ids"]), amount_cents=group["amount_cents"],
+                        transfer_ids=sorted(group["transfer_ids"]))
+                    for (reason, side), group in sorted(groups.items())]
         return Reconciliation(as_of=datetime.now(timezone.utc), bank_balance_change_cents=bank_change,
-            ledger_cash_change_cents=ledger_change, difference_cents=bank_change-ledger_change, items=items)
+            ledger_cash_change_cents=ledger_change, difference_cents=bank_change-ledger_change, items=items,
+            scope="countersign_lane", excluded=excluded)
 
     async def balance_observation(self):
         """Separate actual settled balance evidence from register reconciliation."""

@@ -207,3 +207,117 @@ async def test_independent_resolver_observes_durable_claim_while_bank_call_is_in
     finally:
         release.set()
         connection.close()
+
+
+def _advance_approval_session(app):
+    from datetime import timedelta
+    before = app.state.store.session_started_at
+    with app.state.store.transaction() as connection:
+        connection.execute("UPDATE metadata SET value=? WHERE key=?",
+                           ((before + timedelta(seconds=1)).isoformat(), "session_started_at"))
+
+
+@pytest.mark.asyncio
+async def test_current_approval_snapshot_defaults_to_not_stale(approval_app):
+    app, client = approval_app
+    raw = app.state.store.get_record("approvals", "approval-held")
+    raw.pop("stale", None)
+    # Not computed for a raw record (and so never added to recorded evidence)...
+    assert Approval.model_validate(raw).stale is None
+    assert "stale" not in Approval.model_validate(raw).model_dump(mode="json")
+    listed = (await client.get("/api/approvals?status=pending")).json()
+    assert listed[0]["stale"] is False
+    resolved = await client.post("/api/approvals/approval-held", json=body("reject"))
+    assert resolved.status_code == 200 and resolved.json()["stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_stale_rejection_resolves_once_with_audit_and_without_money_or_journal_posting(approval_app):
+    app, client = approval_app
+    original_context = app.state.store.get_record("approval_contexts", "approval-held")
+    entries_before = [entry.model_dump(mode="json") for entry in app.state.ledger.list_entries()]
+    events_before = app.state.store.list_events("run-held")
+    _advance_approval_session(app)
+    assert (await client.get("/api/approvals?status=pending")).json()[0]["stale"] is True
+    response = await client.post("/api/approvals/approval-held", json=body("reject", note="Stale hold declined"))
+    assert response.status_code == 200
+    assert response.json()["stale"] is True
+    assert response.json()["status"] == "resolved"
+    assert response.json()["resolution"]["decision"] == "reject"
+    assert "transfer_id" not in response.json()["resolution"]
+    assert (await client.get("/api/approvals?status=pending")).json() == []
+    assert (await client.get("/api/approvals?status=resolved")).json()[0]["stale"] is True
+    app.state.adapters.bank.transfer.assert_not_awaited()
+    assert app.state.store.list_records("transfers") == []
+    assert [entry.model_dump(mode="json") for entry in app.state.ledger.list_entries()] == entries_before
+    events = app.state.store.list_events("run-held")
+    assert len(events) == len(events_before) + 1
+    event = events[-1]
+    assert event.type == "approval.resolved" and event.lane == "countersign"
+    assert event.payload.approval_id == "approval-held" and event.payload.decision == "reject"
+    assert event.seq == events_before[-1].seq + 1
+    assert not any(event.type in {"payment.executed", "ledger.posted"} for event in events)
+    assert app.state.store.get_record("approval_contexts", "approval-held") == original_context
+    attempt = app.state.store.get_record("approval_attempts", "approval-held")
+    assert attempt["actor_id"] == "person-ap-manager" and attempt["state"] == "resolved"
+    assert app.state.store.pending_audit(run_id="run-held")[-1]["document"]["type"] == "approval.resolved"
+    assert (await client.post("/api/approvals/approval-held", json=body("reject"))).status_code == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("choice", ["pay_vendor_on_file", "approve_new_account"])
+async def test_stale_approval_cannot_pay_and_returns_rerun_guidance(approval_app, choice):
+    app, client = approval_app
+    _advance_approval_session(app)
+    response = await client.post("/api/approvals/approval-held", json=body(choice, confirm_last4="9999"))
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == "This hold is from an earlier server session; re-run the batch to approve."
+    app.state.adapters.bank.transfer.assert_not_awaited()
+    assert app.state.store.get_record("approval_attempts", "approval-held") is None
+    assert app.state.store.get_record("approvals", "approval-held")["status"] == "pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor", ["person-ap-agent", "person-vendor-admin", "missing"])
+async def test_stale_reject_still_enforces_requester_and_role_separation(approval_app, actor):
+    app, client = approval_app
+    _advance_approval_session(app)
+    response = await client.post("/api/approvals/approval-held", json=body("reject", actor_id=actor))
+    assert response.status_code == 403 and response.json()["error"]["code"] == "sod_violation"
+    app.state.adapters.bank.transfer.assert_not_awaited()
+    assert app.state.store.get_record("approval_attempts", "approval-held") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"amount_cents": 6_000_000}, {"required_role": "controller"},
+                                  {"requested_by": "person-ap-manager"}])
+async def test_stale_reject_keeps_amount_role_and_requester_limits(approval_app, change):
+    app, client = approval_app
+    row = app.state.store.get_record("approvals", "approval-held")
+    app.state.store.save_record("approvals", "approval-held", {**row, **change})
+    _advance_approval_session(app)
+    response = await client.post("/api/approvals/approval-held", json=body("reject"))
+    assert response.status_code == 403 and response.json()["error"]["code"] == "sod_violation"
+    assert "approve instead" in response.json()["error"]["message"]
+    app.state.adapters.bank.transfer.assert_not_awaited()
+    assert app.state.store.get_record("approval_attempts", "approval-held") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("problem", ["missing_context", "mismatched_context", "missing_run"])
+async def test_stale_reject_does_not_infer_missing_or_mismatched_original_authority(approval_app, problem):
+    app, client = approval_app
+    _advance_approval_session(app)
+    if problem == "missing_context":
+        with app.state.store.transaction() as connection:
+            connection.execute("DELETE FROM approval_contexts WHERE approval_id=?", ("approval-held",))
+    elif problem == "missing_run":
+        with app.state.store.transaction() as connection:
+            connection.execute("DELETE FROM runs WHERE run_id=?", ("run-held",))
+    else:
+        context = app.state.store.get_record("approval_contexts", "approval-held")
+        app.state.store.save_record("approval_contexts", "approval-held", {**context, "invoice_id": "another-invoice"})
+    response = await client.post("/api/approvals/approval-held", json=body("reject"))
+    assert response.status_code == 409
+    app.state.adapters.bank.transfer.assert_not_awaited()
+    assert app.state.store.get_record("approval_attempts", "approval-held") is None

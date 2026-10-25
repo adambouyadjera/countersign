@@ -52,27 +52,36 @@ def cash_claim(app, *, amount, transfer_id, incoming=False):
 
 
 @pytest.mark.asyncio
-async def test_full_both_lane_run_matches_every_actual_offline_bank_transfer(tmp_path):
+async def test_full_both_lane_run_reconciles_countersign_books_to_zero_and_reports_the_unguarded_lane(tmp_path):
     app = application(tmp_path)
     async with app.router.lifespan_context(app):
         batch = create_standard_batch(app.state.store)
         initial = app.state.run_manager.start(RunRequest(batch_id=batch.batch_id, lanes=["unguarded", "countersign"]))
         run = await app.state.run_manager.wait(initial.run_id)
         assert all(lane.status == "completed" for lane in run.lanes)
-        expected = {
-            event.payload.payment.transfer_id: event.payload.payment
-            for event in app.state.store.list_events(run.run_id) if event.type == "payment.executed"
-        }
-        assert len(expected) == 9
+        paid = [event for event in app.state.store.list_events(run.run_id) if event.type == "payment.executed"]
+        countersign = {e.payload.payment.transfer_id: e.payload.payment for e in paid if e.lane == "countersign"}
+        unguarded = {e.payload.payment.transfer_id: e.payload.payment for e in paid if e.lane == "unguarded"}
+        assert (len(countersign), len(unguarded)) == (4, 5)
         result = await app.state.reconciler.reconcile()
+        # Countersign's books against Countersign-lane transfers only.
         assert result.difference_cents == 0
-        assert result.bank_balance_change_cents == -sum(item.amount_cents for item in expected.values())
+        assert result.bank_balance_change_cents == -sum(item.amount_cents for item in countersign.values())
         assert result.ledger_cash_change_cents == result.bank_balance_change_cents
-        assert {item.transfer_id for item in result.items} == set(expected)
+        assert {item.transfer_id for item in result.items} == set(countersign)
         assert all(item.status == "matched" and item.journal_entry_id for item in result.items)
         assert all(app.state.ledger.get_entry(item.journal_entry_id) for item in result.items)
+        # The comparison lane is excluded on both sides, with counts and every ID, never silently.
+        excluded = {(group.reason, group.side): group for group in result.excluded}
+        bank_side = excluded[("unguarded_lane", "bank")]
+        ledger_side = excluded[("unguarded_lane", "ledger")]
+        assert bank_side.count == ledger_side.count == 5
+        assert set(bank_side.transfer_ids) == set(ledger_side.transfer_ids) == set(unguarded)
+        assert bank_side.amount_cents == ledger_side.amount_cents == sum(item.amount_cents for item in unguarded.values())
+        assert ("before_books_started", "bank") not in excluded
+        assert result.scope == "countersign_lane"
         assert app.state.ledger.trial_balance().balanced is True
-        # One real bill per invoice, plus every actual bank movement in both lanes.
+        # One real bill per invoice, plus every actual bank movement in both lanes, is still booked.
         entries = app.state.ledger.list_entries(run_id=run.run_id)
         assert sum(entry.source.kind == "invoice" for entry in entries) == 5
         assert sum(entry.source.kind == "payment" for entry in entries) == 9
@@ -150,9 +159,10 @@ async def test_first_baseline_excludes_prior_ids_and_is_not_recaptured_after_pay
 
 
 @pytest.mark.asyncio
-async def test_upgrade_keeps_already_saved_current_session_movements_visible(tmp_path):
+async def test_transfer_from_before_the_books_started_is_excluded_with_a_count_not_hidden(tmp_path):
     app = application(tmp_path)
     async with app.router.lifespan_context(app):
+        # A current-session payment saved before ledger support (no journal entry, before the baseline).
         current = await bank_payment(app, amount=333)
         record = app.state.store.get_record("transfers", current.transfer_id)
         app.state.store.save_record("transfers", current.transfer_id, {
@@ -161,8 +171,32 @@ async def test_upgrade_keeps_already_saved_current_session_movements_visible(tmp
         baseline = await app.state.reconciler.ensure_baseline()
         assert current.transfer_id not in baseline["prior_activity_ids"]
         result = await app.state.reconciler.reconcile()
-        assert result.difference_cents == -333
-        assert result.items[0].status == "bank_only"
+        assert result.difference_cents == 0 and result.items == []
+        [group] = result.excluded
+        assert (group.reason, group.side, group.label) == ("before_books_started", "bank", "before books started")
+        assert (group.count, group.amount_cents, group.transfer_ids) == (1, 333, [current.transfer_id])
+        # A later payment with no journal entry is still a real, unexplained bank movement.
+        later = await bank_payment(app, amount=50)
+        again = await app.state.reconciler.reconcile()
+        assert again.difference_cents == -50
+        assert [(item.transfer_id, item.status) for item in again.items] == [(later.transfer_id, "bank_only")]
+
+
+@pytest.mark.asyncio
+async def test_bank_activity_this_app_never_submitted_still_counts_as_unmatched(tmp_path, monkeypatch):
+    app = application(tmp_path)
+    async with app.router.lifespan_context(app):
+        await app.state.reconciler.ensure_baseline()
+
+        async def foreign_register(account_id):
+            return [BankActivity(transfer_id="submitted-elsewhere", amount_cents=4000, cash_change_cents=-4000,
+                                 status="pending", kind="withdrawals", mode="offline")]
+
+        monkeypatch.setattr(app.state.adapters.bank, "account_activity", foreign_register)
+        result = await app.state.reconciler.reconcile()
+        assert result.difference_cents == -4000
+        assert [(item.transfer_id, item.status) for item in result.items] == [("submitted-elsewhere", "bank_only")]
+        assert result.excluded == []
 
 
 @pytest.mark.asyncio

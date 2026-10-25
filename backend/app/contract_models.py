@@ -131,6 +131,11 @@ class ResetResponse(ContractModel):
     session_started_at: Timestamp
 
 
+class DemoResetRequest(ContractModel):
+    """Optional body for POST /api/demo/reset. autopilot=true enables both lanes after the reset."""
+    autopilot: StrictBool = OptionalField()
+
+
 class BatchRequest(ContractModel):
     kind: Literal["standard", "bank_change"]
 
@@ -392,6 +397,8 @@ class Approval(ContractModel):
     created_at: Timestamp
     requested_by: str
     required_role: PersonRole
+    # Computed per request by ApprovalManager; omitted from recorded evidence and older payloads.
+    stale: StrictBool = OptionalField()
     resolution: ApprovalResolution = OptionalField()
 
 
@@ -488,6 +495,8 @@ class VendorAccountHistory(ContractModel):
     valid_to: Timestamp | None
     verified_by: str
     verified_at: Timestamp
+    # Computed on read (vendor_detail): the row is the seeded January-June demo archive.
+    archive: StrictBool = OptionalField()
 
 
 class VendorPayment(ContractModel):
@@ -495,6 +504,8 @@ class VendorPayment(ContractModel):
     amount_cents: StrictInt
     account_display: str
     journal_entry_id: str
+    # Computed on read (vendor_detail): the row is the seeded January-June demo archive.
+    archive: StrictBool = OptionalField()
 
 
 class VendorDetail(ContractModel):
@@ -554,12 +565,24 @@ class ReconciliationItem(ContractModel):
     note: str = OptionalField()
 
 
+class ReconciliationExclusion(ContractModel):
+    """Activity left out of the difference on purpose, reported with every ID so nothing is hidden."""
+    reason: Literal["unguarded_lane", "before_books_started"]
+    label: str
+    side: Literal["bank", "ledger"]
+    count: StrictInt
+    amount_cents: StrictInt
+    transfer_ids: list[str]
+
+
 class Reconciliation(ContractModel):
     as_of: Timestamp
     bank_balance_change_cents: StrictInt
     ledger_cash_change_cents: StrictInt
     difference_cents: StrictInt
     items: list[ReconciliationItem]
+    scope: Literal["countersign_lane"] = OptionalField()
+    excluded: list[ReconciliationExclusion] = OptionalField()
 
 
 class InboxRequest(ContractModel):
