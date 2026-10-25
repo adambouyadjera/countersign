@@ -23,7 +23,8 @@ class Bookkeeper:
         return [entry] if created else []
 
     def payment_postings(self, event):
-        if event.type != "payment.executed":
+        # Comparison payments remain bank/audit evidence, never company books.
+        if event.type != "payment.executed" or event.lane != "countersign":
             return []
         payment = event.payload.payment
         transfer = self.store.get_record("transfers", payment.transfer_id) or {}

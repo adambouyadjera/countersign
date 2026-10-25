@@ -71,20 +71,21 @@ async def test_full_both_lane_run_reconciles_countersign_books_to_zero_and_repor
         assert {item.transfer_id for item in result.items} == set(countersign)
         assert all(item.status == "matched" and item.journal_entry_id for item in result.items)
         assert all(app.state.ledger.get_entry(item.journal_entry_id) for item in result.items)
-        # The comparison lane is excluded on both sides, with counts and every ID, never silently.
+        # Fresh comparison payments exist only on the bank side. Legacy
+        # comparison journals remain supported by the reconciliation filter.
         excluded = {(group.reason, group.side): group for group in result.excluded}
         bank_side = excluded[("unguarded_lane", "bank")]
-        ledger_side = excluded[("unguarded_lane", "ledger")]
-        assert bank_side.count == ledger_side.count == 5
-        assert set(bank_side.transfer_ids) == set(ledger_side.transfer_ids) == set(unguarded)
-        assert bank_side.amount_cents == ledger_side.amount_cents == sum(item.amount_cents for item in unguarded.values())
+        assert ("unguarded_lane", "ledger") not in excluded
+        assert bank_side.count == 5
+        assert set(bank_side.transfer_ids) == set(unguarded)
+        assert bank_side.amount_cents == sum(item.amount_cents for item in unguarded.values())
         assert ("before_books_started", "bank") not in excluded
         assert result.scope == "countersign_lane"
         assert app.state.ledger.trial_balance().balanced is True
-        # One real bill per invoice, plus every actual bank movement in both lanes, is still booked.
+        # Only Countersign's four accepted bills and payments are booked.
         entries = app.state.ledger.list_entries(run_id=run.run_id)
-        assert sum(entry.source.kind == "invoice" for entry in entries) == 5
-        assert sum(entry.source.kind == "payment" for entry in entries) == 9
+        assert sum(entry.source.kind == "invoice" for entry in entries) == 4
+        assert sum(entry.source.kind == "payment" for entry in entries) == 4
         posted = [event for event in app.state.store.list_events(run.run_id) if event.type == "ledger.posted"]
         assert len(posted) == len(entries)
         assert {event.payload.entry.entry_id for event in posted} == {entry.entry_id for entry in entries}
