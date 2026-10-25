@@ -506,7 +506,8 @@ class Store:
                             amount_cents=None, invoice_date=None, po_number=None) -> bool:
         """Keep exact session protection and include semantic paid/pending history.
 
-        Semantic identity survives session resets. Unguarded-lane transfers are
+        A demo reset starts a new live duplicate register without deleting
+        transfer evidence or journal entries. Unguarded-lane transfers are
         a separate experiment and never contaminate Countersign's paid history.
         Old records without a date or PO still retain exact-number protection.
         """
@@ -517,16 +518,44 @@ class Store:
         if not identity.get("vendor_id") or not identity.get("amount_cents"):
             return False
         for record in self.list_records("session_payment_claims"):
-            if (self._payment_unresolved_or_paid(record)
+            if (self._payment_in_current_session(record)
+                    and self._payment_unresolved_or_paid(record)
                     and self._same_payment(self._historical_payment_identity(record), identity)):
                 return True
         for transfer in self.list_records("transfers"):
             if transfer.get("lane") == "unguarded" or transfer.get("via") == "agent":
                 continue
-            if (self._payment_unresolved_or_paid(transfer)
+            if (self._payment_in_current_session(transfer)
+                    and self._payment_unresolved_or_paid(transfer)
                     and self._same_payment(self._historical_payment_identity(transfer), identity)):
                 return True
         return False
+
+    def _payment_in_current_session(self, record: Mapping[str, Any]) -> bool:
+        """Use server session identity for exact and semantic duplicate scans.
+
+        An explicit session wins over refreshed transfer timestamps. Legacy
+        records may use their submission time or a retained server-owned run
+        binding; reset removes old runs, so it cannot relabel old submissions.
+        """
+        def timestamp(value):
+            if not isinstance(value, str):
+                return None
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
+
+        session = self.session_started_at.astimezone(timezone.utc)
+        if "session_started_at" in record:
+            return timestamp(record["session_started_at"]) == session
+        created = timestamp(record.get("ts"))
+        if created is None:
+            run_id = record.get("run_id")
+            run = self.get_record("runs", run_id) if isinstance(run_id, str) else None
+            created = timestamp((run or {}).get("created_at"))
+        return created is not None and created >= session
 
     def _has_exact_session_payment(self, invoice_number: str) -> bool:
         """Include reservations and invoice-bound transfers from before B6.
@@ -540,29 +569,14 @@ class Store:
         if self.get_record("session_payment_claims", self._session_payment_key(invoice_number)) is not None:
             return True
         number = invoice_number.strip().casefold()
-        session = self.session_started_at.astimezone(timezone.utc)
-
-        def timestamp(value):
-            if not isinstance(value, str):
-                return None
-            try:
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return None
-            return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
 
         for transfer in self.list_records("transfers"):
             # Side-by-side lanes are independent experiments over the same
             # invoice. Unguarded payments must not influence policy decisions.
             if transfer.get("lane") == "unguarded" or transfer.get("via") == "agent":
                 continue
-            if "session_started_at" in transfer:
-                if timestamp(transfer["session_started_at"]) != session:
-                    continue
-            else:
-                created = timestamp(transfer.get("ts"))
-                if created is None or created < session:
-                    continue
+            if not self._payment_in_current_session(transfer):
+                continue
             bound_number = transfer.get("invoice_number")
             if not isinstance(bound_number, str) or not bound_number.strip():
                 run_id, invoice_id = transfer.get("run_id"), transfer.get("invoice_id")
