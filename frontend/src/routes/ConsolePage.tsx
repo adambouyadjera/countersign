@@ -15,13 +15,15 @@ import { RequestError } from '@/components/console/RequestError'
 import { VendorHistoryLine } from '@/components/console/VendorHistoryLine'
 import { SigFace } from '@/components/sig'
 import { InkButton, Kbd } from '@/components/ui'
-import { useAutopilot } from '@/hooks/queries'
+import { useAutopilot, useInboxList } from '@/hooks/queries'
 import { useHealth } from '@/hooks/useHealth'
 import { useRunEvents, type StreamStatus } from '@/hooks/useRunEvents'
 import { handleNamespaces, splitHandle } from '@/lib/handle'
+import { inboxRows } from '@/lib/inboxOrder'
 import { formatCents } from '@/lib/money'
 import { countersignOutcome, unguardedOutcome } from '@/lib/outcomes'
 import { buildRounds, currentInvoice, decisionFor, extractionFor } from '@/lib/rounds'
+import { useAttackStore } from '@/state/attackStore'
 import { useConsoleStore } from '@/state/consoleStore'
 import type { InvoiceStatus } from '@/state/runReducer'
 
@@ -115,6 +117,14 @@ export function ConsolePage() {
   const autopilot = useAutopilot()
   const onAutopilotRun = Boolean(run) && run?.run_id === autopilot.data?.run_id
   const canRun = Boolean(batch) && !onAutopilotRun
+  // Inbox arrival times order the list newest first; Attack Lab submissions get an "attack" tag.
+  const inboxList = useInboxList(autopilot.data?.enabled === true)
+  const receivedByDoc = useMemo(
+    () => new Map((inboxList.data ?? []).map((i) => [i.document_id, i.received_at] as const)),
+    [inboxList.data],
+  )
+  const submittedDocs = useAttackStore((s) => s.submittedDocs)
+  const attackDocs = useMemo(() => new Set(submittedDocs), [submittedDocs])
   const { mutate: run_, isPending: runPending } = startRun
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -136,9 +146,11 @@ export function ConsolePage() {
 
   // Show what the user picked; otherwise follow the duel, then the first hold, then the first invoice.
   const invoices = useMemo(() => batch?.invoices ?? [], [batch])
+  // The inbox shows newest first; with nothing picked, fall back in that same order.
+  const newestFirst = useMemo(() => inboxRows(invoices, receivedByDoc).map((r) => r.invoice), [invoices, receivedByDoc])
   const picked = invoices.find((i) => i.invoice_id === selectedInvoiceId)
-  const firstHeld = invoices.find((i) => cs.invoices[i.invoice_id]?.status === 'held')
-  const shown = picked ?? invoices.find((i) => i.invoice_id === dueling) ?? firstHeld ?? invoices[0]
+  const firstHeld = newestFirst.find((i) => cs.invoices[i.invoice_id]?.status === 'held')
+  const shown = picked ?? invoices.find((i) => i.invoice_id === dueling) ?? firstHeld ?? newestFirst[0]
   const shownId = shown?.invoice_id
   useEffect(() => setFocused(shownId ?? null), [shownId, setFocused])
 
@@ -203,6 +215,8 @@ export function ConsolePage() {
         onSelect={selectInvoice}
         totals={totals}
         autopilotOn={autopilot.data?.enabled === true}
+        receivedByDoc={receivedByDoc}
+        attackDocs={attackDocs}
         mail={<MailPanel batch={batch} runId={run?.run_id} />}
         controls={
           <>
