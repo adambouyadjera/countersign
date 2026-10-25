@@ -52,17 +52,24 @@ export function AutopilotStatus({ interactive = false }: { interactive?: boolean
         className="inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 font-[inherit] text-muted disabled:cursor-wait"
       >
         autopilot
+        {/*
+          Track 36×20 px, border-box, 2px ink border (whole px, so it never rounds unevenly): inner box 32×16.
+          Knob = inner height 16 − 2 × gap 2 = 12 px, centred vertically.
+          Off: 2 px from the inner left edge. On: translateX(32 − 12 − 2 × 2 = 16 px). The gap is 2 px on every side.
+        */}
         <span
           aria-hidden
+          data-testid="autopilot-track"
           className={cn(
-            'relative inline-block h-5 w-9 rounded-full border-[1.5px] transition-colors',
-            on ? 'border-ink bg-good' : 'border-ink bg-panel',
+            'relative box-border inline-block h-[20px] w-[36px] shrink-0 rounded-full border-2 border-solid border-ink transition-colors motion-reduce:transition-none',
+            on ? 'bg-good' : 'bg-panel',
           )}
         >
           <span
+            data-testid="autopilot-knob"
             className={cn(
-              'absolute top-[2px] size-3.5 rounded-full bg-card shadow-sm transition-[left] motion-reduce:transition-none',
-              on ? 'left-[18px]' : 'left-[2px]',
+              'absolute top-1/2 left-[2px] box-border size-[12px] -translate-y-1/2 rounded-full bg-card shadow-sm transition-transform motion-reduce:transition-none',
+              on ? 'translate-x-[16px]' : 'translate-x-0',
             )}
           />
         </span>
