@@ -221,3 +221,11 @@ contain no poisoned flag, attack text, canary or scoring metadata. No existing
 field, enum member, endpoint or validation is removed. The exact pending
 additive schemas are pinned in `tests/pending_contract_extensions.json`;
 contract parity still compares every published schema field and endpoint.
+
+## Cleanup item 3 — missing historical artifact diagnostic
+
+Keep both read-only artifact endpoints and their existing 404 `ErrorResponse`.
+Document the message for an invoice lacking a saved historical graph or agent
+transcript: `Not recorded for this run (created before graphs were persisted)`.
+Unknown runs and invoices retain their current distinct 404 messages. No
+recorded evidence is reconstructed, and no schema is removed or renamed.

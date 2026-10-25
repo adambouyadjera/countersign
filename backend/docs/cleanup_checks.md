@@ -50,3 +50,24 @@ Verification: `.venv/bin/pytest -q tests/test_attack_intake.py tests/test_custom
 ```text
 140 passed, 3 warnings in 9.02s
 ```
+
+## Item 3 — graphs, transcripts and old recordings
+
+Checks: `PYTHONPATH=. .venv/bin/python /tmp/countersign_cleanup_checks.py` and
+`PYTHONPATH=. .venv/bin/python /tmp/countersign_historic_route_checks.py`.
+Fresh batch, attack and autopilot invoices had graph/transcript HTTP 200 with
+the policy event's IDs; they remained HTTP 200 after a simulated restart.
+An isolated read-only copy of the existing database also returned 200/200 for
+the reported `run-autopilot-fd1b8993e5354f9fa77f11fedcc152e2` /
+`invoice-b81e3999c87b4a9d8bf30bc6acf7ff97`. Current persistence failures were
+not reproduced; existing SQLite persistence was retained.
+
+The older `run-f94a0e4db0db47ea9c68153ad693ee7b` actually predates artifacts:
+five policy decisions, no graphs or agent transcripts, and its unguarded lane
+was `not_implemented`. Its generic 404 diagnostics reproduced. Missing legacy
+records now return the requested explicit diagnostic; no historical graph,
+transcript or model identity is invented. New tests cover all three intake
+paths and compare full artifacts before/after restart.
+
+`.venv/bin/pytest -q tests/test_graph_diagnostics.py tests/test_autopilot.py tests/test_graph.py --tb=short`
+returned `33 passed, 2 warnings in 3.70s`.
