@@ -27,6 +27,9 @@ class HealthChecker:
 
     async def _check(self, name: str, adapter: ServiceAdapter) -> ServiceHealth:
         async with self._locks[name]:
+            override = getattr(adapter, "runtime_health", lambda: None)()
+            if override is not None:
+                return ServiceHealth.model_validate(override).model_copy(deep=True)
             cached = self._cache.get(name)
             if adapter.mode == "live" and cached and self._clock() < cached[0]:
                 return cached[1].model_copy(deep=True)

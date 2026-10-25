@@ -109,6 +109,18 @@ class Store:
                     "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
                 )
                 connection.execute(
+                    "CREATE TABLE IF NOT EXISTS audit_outbox ("
+                    "event_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, seq INTEGER NOT NULL, "
+                    "document TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0, mapping_error TEXT)"
+                )
+                connection.execute("CREATE INDEX IF NOT EXISTS audit_pending ON audit_outbox (delivered, run_id, seq)")
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS audit_event_sequences (run_id TEXT PRIMARY KEY, last_seq INTEGER NOT NULL)"
+                )
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS audit_failure_notifications (run_id TEXT PRIMARY KEY)"
+                )
+                connection.execute(
                     "CREATE TABLE IF NOT EXISTS attack_batch_requests ("
                     "request_id TEXT PRIMARY KEY, requested_at REAL NOT NULL)"
                 )
@@ -618,20 +630,130 @@ class Store:
         """
         data = _event_data(event)
         with self.transaction() as connection:
-            seq = connection.execute(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE run_id = ?", (run_id,)
-            ).fetchone()[0]
+            seq = self._next_event_sequence(connection, run_id)
             data.update(run_id=run_id, seq=seq, ts=datetime.now(timezone.utc))
             validated = _EVENT_ADAPTER.validate_python(data)
             self._insert_event(connection, validated)
             return validated
 
     @staticmethod
-    def _insert_event(connection: sqlite3.Connection, event: RunEvent) -> None:
+    def _next_event_sequence(connection, run_id):
+        visible = connection.execute("SELECT COALESCE(MAX(seq), 0) FROM events WHERE run_id = ?", (run_id,)).fetchone()[0]
+        previous = connection.execute("SELECT last_seq FROM audit_event_sequences WHERE run_id = ?", (run_id,)).fetchone()
+        return max(visible, previous[0] if previous else 0) + 1
+
+    def _insert_event(self, connection: sqlite3.Connection, event: RunEvent) -> None:
         connection.execute(
             "INSERT INTO events (run_id, seq, ts, data) VALUES (?, ?, ?, ?)",
             (event.run_id, event.seq, event.ts.isoformat(), event.model_dump_json(exclude_none=True)),
         )
+        self._queue_audit_event(connection, event)
+
+    def _queue_audit_event(self, connection, event):
+        """Snapshot source evidence in the event transaction; never call a service."""
+        mapping_error = None
+        try:
+            from app.audit.events import map_event
+            document = map_event(self, event)
+            encoded = json.dumps(document, separators=(",", ":"), allow_nan=False)
+        except Exception as error:
+            # Audit projection failures cannot undo a financial event. The
+            # durable marker prevents a partial projection being called synced.
+            document = {"run_id": event.run_id, "seq": event.seq, "ts": event.ts.isoformat(),
+                        "lane": event.lane, "type": event.type, "mode": event.mode,
+                        "payload": json.loads(event.model_dump_json())["payload"]}
+            mapping_error = type(error).__name__
+            encoded = json.dumps(document, separators=(",", ":"), allow_nan=False)
+        connection.execute(
+            "INSERT OR IGNORE INTO audit_outbox (event_id, run_id, seq, document, mapping_error) VALUES (?, ?, ?, ?, ?)",
+            (f"{event.run_id}:{event.seq}", event.run_id, event.seq,
+             encoded, mapping_error),
+        )
+        connection.execute(
+            "INSERT INTO audit_event_sequences (run_id, last_seq) VALUES (?, ?) "
+            "ON CONFLICT(run_id) DO UPDATE SET last_seq=MAX(last_seq, excluded.last_seq)",
+            (event.run_id, event.seq),
+        )
+
+    def backfill_audit_outbox(self):
+        """Queue recoverable pre-feature events once; delivered IDs remain tombstones."""
+        with self.transaction() as connection:
+            rows = connection.execute(
+                "SELECT events.data FROM events LEFT JOIN audit_outbox "
+                "ON audit_outbox.run_id=events.run_id AND audit_outbox.seq=events.seq "
+                "WHERE audit_outbox.event_id IS NULL ORDER BY events.run_id, events.seq"
+            ).fetchall()
+            for row in rows:
+                self._queue_audit_event(connection, _EVENT_ADAPTER.validate_json(row["data"]))
+        return len(rows)
+
+    def pending_audit(self, limit=100, run_id=None):
+        if type(limit) is not int or limit < 1:
+            raise ValueError("Audit batch size must be positive")
+        with self.transaction() as connection:
+            where, parameters = "delivered=0", []
+            if run_id is not None:
+                where += " AND run_id=?"
+                parameters.append(run_id)
+            rows = connection.execute(
+                f"SELECT * FROM audit_outbox WHERE {where} ORDER BY rowid LIMIT ?", (*parameters, limit)
+            ).fetchall()
+            result = []
+            for row in rows:
+                record = {"event_id": row["event_id"], "run_id": row["run_id"], "seq": row["seq"],
+                          "document": json.loads(row["document"])}
+                if row["mapping_error"]:
+                    try:
+                        from app.audit.events import map_event
+                        saved = connection.execute("SELECT data FROM events WHERE run_id=? AND seq=?",
+                                                   (row["run_id"], row["seq"])).fetchone()
+                        if saved is None:
+                            raise ValueError("Original event requires review")
+                        document = map_event(self, _EVENT_ADAPTER.validate_json(saved["data"]))
+                    except Exception as error:
+                        record["mapping_error"] = type(error).__name__
+                    else:
+                        record["document"] = document
+                        connection.execute("UPDATE audit_outbox SET document=?, mapping_error=NULL WHERE event_id=?",
+                            (json.dumps(document, separators=(",", ":"), allow_nan=False), row["event_id"]))
+                result.append(record)
+            return result
+
+    def acknowledge_audit(self, event_ids):
+        with self.transaction() as connection:
+            connection.executemany("UPDATE audit_outbox SET delivered=1 WHERE event_id=?", ((key,) for key in event_ids))
+
+    def audit_pending_count(self, run_id=None):
+        with self._lock:
+            if run_id is None:
+                return self._db().execute("SELECT COUNT(*) FROM audit_outbox WHERE delivered=0").fetchone()[0]
+            return self._db().execute("SELECT COUNT(*) FROM audit_outbox WHERE delivered=0 AND run_id=?", (run_id,)).fetchone()[0]
+
+    def audit_run_known(self, run_id):
+        """Whether this database can safely allocate an event for this run.
+
+        Remote-only audit context must never create a local sequence starting
+        at one. Sequence tombstones and outbox records intentionally survive a
+        demo reset, so failures for that history can still append safely.
+        """
+        with self._lock:
+            return bool(self._db().execute(
+                "SELECT EXISTS(SELECT 1 FROM runs WHERE run_id=? "
+                "UNION ALL SELECT 1 FROM events WHERE run_id=? "
+                "UNION ALL SELECT 1 FROM audit_event_sequences WHERE run_id=? "
+                "UNION ALL SELECT 1 FROM audit_outbox WHERE run_id=?)",
+                (run_id, run_id, run_id, run_id),
+            ).fetchone()[0])
+
+    def claim_audit_error(self, run_id):
+        """Claim inside the transaction that also appends the failure event.
+
+        EventBus.report_audit_failure supplies that outer transaction. Keeping
+        these writes atomic prevents a cancelled notifier from consuming its
+        durable once-per-run marker without emitting an event.
+        """
+        with self.transaction() as connection:
+            return connection.execute("INSERT OR IGNORE INTO audit_failure_notifications(run_id) VALUES (?)", (run_id,)).rowcount == 1
 
     def list_events(self, run_id: str, last_seq: int = 0) -> list[RunEvent]:
         with self._lock:
@@ -640,15 +762,15 @@ class Store:
             ).fetchall()
             return [_EVENT_ADAPTER.validate_json(row["data"]) for row in rows]
 
-    def persist_audit_event(self, event: RunEvent | Mapping[str, Any]) -> RunEvent:
-        """Persist an offline audit event, idempotently preserving its envelope.
+    def persist_audit_event(self, event: RunEvent | Mapping[str, Any], *, require_offline=True) -> RunEvent:
+        """Persist an already-sequenced event, preserving its source envelope.
 
-        The event must be labelled offline before publishing to the bus if it
-        passes through the offline audit sink. A conflicting sequence is rejected
-        rather than changing an event that subscribers may already have received.
+        Offline callers require their explicit offline label by default. The
+        live audit sink accepts either source mode without relabelling it. A
+        conflicting sequence cannot change previously published history.
         """
         validated = _EVENT_ADAPTER.validate_python(_event_data(event))
-        if validated.mode != "offline":
+        if require_offline and validated.mode != "offline":
             raise ValueError("Offline audit events must carry mode='offline'")
         if validated.seq < 1:
             raise ValueError("Persisted event sequences must be positive")
@@ -664,11 +786,13 @@ class Store:
                     existing = _EVENT_ADAPTER.validate_json(row["data"])
                     if existing != validated:
                         raise ValueError("Conflicting event already exists for run_id and seq")
+                    queued = connection.execute("SELECT 1 FROM audit_outbox WHERE event_id=?",
+                                                (f"{existing.run_id}:{existing.seq}",)).fetchone()
+                    if queued is None:
+                        self._queue_audit_event(connection, existing)
                     connection.commit()
                     return existing
-                next_seq = connection.execute(
-                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE run_id = ?", (validated.run_id,)
-                ).fetchone()[0]
+                next_seq = self._next_event_sequence(connection, validated.run_id)
                 if validated.seq != next_seq:
                     raise ValueError("Audit events must use the next per-run sequence number")
                 self._insert_event(connection, validated)
