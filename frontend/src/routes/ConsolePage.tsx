@@ -6,6 +6,7 @@ import { ApprovalCard } from '@/components/console/ApprovalCard'
 import { ChallengeInput } from '@/components/console/ChallengeInput'
 import { DuelTranscript } from '@/components/console/DuelTranscript'
 import { InboxColumn, type InboxTotals } from '@/components/console/InboxColumn'
+import { LiveProgress } from '@/components/console/LiveProgress'
 import { MailPanel } from '@/components/console/MailPanel'
 import { effectiveLaneStatus } from '@/components/console/lanes'
 import { ModeTag } from '@/components/console/ModeTag'
@@ -15,6 +16,7 @@ import { VendorHistoryLine } from '@/components/console/VendorHistoryLine'
 import { SigFace } from '@/components/sig'
 import { InkButton, Kbd } from '@/components/ui'
 import { useAutopilot } from '@/hooks/queries'
+import { useHealth } from '@/hooks/useHealth'
 import { useRunEvents, type StreamStatus } from '@/hooks/useRunEvents'
 import { handleNamespaces, splitHandle } from '@/lib/handle'
 import { formatCents } from '@/lib/money'
@@ -68,7 +70,8 @@ export function ConsolePage() {
     onSuccess: setRun,
   })
 
-  const { state, stream } = useRunEvents(run?.run_id ?? null, runNonce)
+  const { state, stream, lastEventAt, reconnect } = useRunEvents(run?.run_id ?? null, runNonce)
+  const health = useHealth()
   const balances = useQuery({ queryKey: ['balances'], queryFn: getBalances })
   const cs = state.lanes.countersign
   const ug = state.lanes.unguarded
@@ -247,6 +250,23 @@ export function ConsolePage() {
             )}
           </div>
         </div>
+        {run && (
+          <LiveProgress
+            key={`${run.run_id}|${runNonce}`}
+            lanes={[
+              { lane: ug, status: ugStatus },
+              { lane: cs, status: csStatus },
+            ]}
+            stream={stream}
+            lastEventAt={lastEventAt}
+            reconnect={() => {
+              reconnect()
+              void health.refetch()
+            }}
+            backendUnreachable={health.isError}
+            invoiceLabel={(id) => labels.get(id) ?? id}
+          />
+        )}
         {startRun.isError && (
           <RequestError title="Could not start the run" error={startRun.error} onRetry={() => run_()} retrying={runPending} />
         )}

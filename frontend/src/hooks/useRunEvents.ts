@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import { runEventsUrl } from '@/api/client'
 import { EVENT_SOURCE_CLOSED, getTransport, type RunEventSource } from '@/api/transport'
 import { RUN_EVENT_TYPES, type RunEvent } from '@/api/types'
@@ -12,22 +12,26 @@ export interface RunEventsResult {
   stream: StreamStatus
   /** Messages that arrived but were not valid JSON. */
   malformed: number
+  /** Browser clock (ms) when the last event arrived on this subscription; null before the first. */
+  lastEventAt: number | null
+  /** Close the stream and open a fresh one now (state is kept; replayed events are dropped by seq). */
+  reconnect: () => void
 }
 
 const BACKOFF_MS = [500, 1000, 2000, 4000, 8000]
 
-interface HookState extends RunEventsResult {
+interface HookState extends Omit<RunEventsResult, 'reconnect'> {
   key: string
 }
 
 type HookAction =
   | { type: 'reset'; key: string; runId: string | null }
-  | { type: 'event'; key: string; event: RunEvent }
+  | { type: 'event'; key: string; event: RunEvent; at: number }
   | { type: 'stream'; key: string; stream: StreamStatus }
   | { type: 'malformed'; key: string }
 
 function init([key, runId]: [string, string | null]): HookState {
-  return { key, state: initialRunState(runId), stream: runId ? 'connecting' : 'idle', malformed: 0 }
+  return { key, state: initialRunState(runId), stream: runId ? 'connecting' : 'idle', malformed: 0, lastEventAt: null }
 }
 
 function hookReducer(s: HookState, a: HookAction): HookState {
@@ -37,7 +41,7 @@ function hookReducer(s: HookState, a: HookAction): HookState {
   switch (a.type) {
     case 'event': {
       const state = runReducer(s.state, { type: 'event', event: a.event })
-      return state === s.state ? s : { ...s, state }
+      return state === s.state ? s : { ...s, state, lastEventAt: a.at }
     }
     case 'stream':
       return a.stream === s.stream ? s : { ...s, stream: a.stream }
@@ -62,6 +66,9 @@ export function useRunEvents(runId: string | null, session = 0): RunEventsResult
   const [hs, dispatch] = useReducer(hookReducer, [key, runId] as [string, string | null], init)
   // Reset during render when the subscription changes, so stale state is never painted.
   if (hs.key !== key) dispatch({ type: 'reset', key, runId })
+  // Bumped by reconnect(): re-runs the subscription effect without resetting the reduced state.
+  const [attemptNonce, setAttemptNonce] = useState(0)
+  const reconnect = useCallback(() => setAttemptNonce((n) => n + 1), [])
 
   useEffect(() => {
     if (!runId) return
@@ -80,7 +87,7 @@ export function useRunEvents(runId: string | null, session = 0): RunEventsResult
         return
       }
       if (typeof event.seq === 'number') lastSeen = Math.max(lastSeen, event.seq)
-      dispatch({ type: 'event', key, event })
+      dispatch({ type: 'event', key, event, at: Date.now() })
     }
 
     const connect = async () => {
@@ -104,13 +111,14 @@ export function useRunEvents(runId: string | null, session = 0): RunEventsResult
       }
     }
 
+    dispatch({ type: 'stream', key, stream: 'connecting' })
     void connect()
     return () => {
       disposed = true
       clearTimeout(retry)
       es?.close()
     }
-  }, [runId, key])
+  }, [runId, key, attemptNonce])
 
-  return { state: hs.state, stream: hs.stream, malformed: hs.malformed }
+  return { state: hs.state, stream: hs.stream, malformed: hs.malformed, lastEventAt: hs.lastEventAt, reconnect }
 }
