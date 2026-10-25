@@ -74,8 +74,11 @@ def test_reset_clears_only_run_execution_state_and_persists_session(store):
     for table, record_id in (("decisions", "decision-test"), ("approvals", "approval-test")):
         store.save_record(table, record_id, {"run_id": run.run_id})
     preserved = ("vendors", "purchase_orders", "documents", "batches", "transfers", "redteam_jobs")
+    records = {table: {"source": "test"} for table in preserved}
+    records["redteam_jobs"] = {"job_id": "preserved", "status": "queued", "execution": "dry_run",
+        "mutator_model": "offline-test", "progress": {"completed": 0, "total": 10}, "variants": []}
     for table in preserved:
-        store.save_record(table, "preserved", {"source": "test"})
+        store.save_record(table, "preserved", records[table])
 
     new_session = store.reset_demo()
 
@@ -86,7 +89,7 @@ def test_reset_clears_only_run_execution_state_and_persists_session(store):
     assert store.list_records("decisions") == []
     assert store.list_records("approvals") == []
     for table in preserved:
-        assert store.get_record(table, "preserved") == {"source": "test"}
+        assert store.get_record(table, "preserved") == records[table]
     path = store.path
     store.close()
     store.initialize()

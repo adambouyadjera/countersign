@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import approvals, attacks, audit, demo, evaluation, evidence, finance, health, inbox, runs, world
+from app.api import approvals, attacks, audit, demo, evaluation, evidence, finance, health, inbox, redteam, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
@@ -29,6 +29,7 @@ from app.books.ledger import Ledger
 from app.books.bookkeeper import Bookkeeper
 from app.books.reconciliation import Reconciler
 from app.evaluation.runner import EvalManager
+from app.redteam.runner import RedTeamManager
 
 
 def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> JSONResponse:
@@ -87,10 +88,12 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         app.state.run_manager = RunManager(store, app.state.event_bus, app.state.adapters, configuration,
                                            app.state.payment_executor)
         app.state.eval_manager = EvalManager(store, configuration)
+        app.state.redteam_manager = RedTeamManager(store, configuration, audit_sink=app.state.adapters.audit)
         app.state.autopilot_manager = AutopilotManager(store, app.state.event_bus, app.state.run_manager)
         try:
             seed_trusted_world(store)
             seed_people(store, autonomy_limit_cents=configuration.agent_autonomy_limit_cents)
+            app.state.redteam_manager.recover_interrupted()
             if configuration.nessie_mode == "offline":
                 await seed_world(store, app.state.adapters.bank)
             if app.state.adapters.audit.mode == "live":
@@ -104,6 +107,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
             yield
         finally:
             await app.state.autopilot_manager.close()
+            await app.state.redteam_manager.close()
             await app.state.eval_manager.close()
             await app.state.run_manager.close()
             close_extractor = getattr(app.state.adapters.extractor, "aclose", None)
@@ -171,6 +175,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(attacks.router)
     api.include_router(finance.router)
     api.include_router(evaluation.router)
+    api.include_router(redteam.router)
     api.include_router(inbox.router)
     api.include_router(audit.router)
     api.include_router(evidence.router)
