@@ -131,6 +131,11 @@ class ResetResponse(ContractModel):
     session_started_at: Timestamp
 
 
+class DemoResetRequest(ContractModel):
+    """Optional body for POST /api/demo/reset. autopilot=true enables both lanes after the reset."""
+    autopilot: StrictBool = OptionalField()
+
+
 class BatchRequest(ContractModel):
     kind: Literal["standard", "bank_change"]
 

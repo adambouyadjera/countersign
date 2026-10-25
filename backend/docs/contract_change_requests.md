@@ -264,3 +264,12 @@ ID is listed. Bank activity this application never submitted is not excluded:
 it stays `bank_only` and counts toward the difference. Existing fields, item
 statuses and notes are unchanged; the trial balance still includes every
 booked payment from both lanes.
+
+## Cleanup item 7 — demo reset body
+
+`POST /api/demo/reset` accepts an optional JSON body
+`DemoResetRequest = { autopilot?: boolean }` (no other properties; 422
+`validation_error` otherwise). Without a body, or with `autopilot: false`, the
+reset leaves autopilot disabled, as before. With `autopilot: true` it enables
+autopilot for both lanes (`["countersign", "unguarded"]`) and creates a fresh
+autopilot run after the reset. The response is unchanged (`ResetResponse`).

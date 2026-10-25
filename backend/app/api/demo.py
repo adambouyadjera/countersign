@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 
-from app.contract_models import ResetResponse
+from app.contract_models import AutopilotRequest, DemoResetRequest, ResetResponse
 from app.world.seed import seed_world
 from app.pipeline.runner import RunManager
 from app.pipeline.autopilot import AutopilotManager
@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.post("/demo/reset", response_model=ResetResponse, operation_id="reset_demo")
-async def reset_demo(request: Request) -> ResetResponse:
+async def reset_demo(request: Request, body: DemoResetRequest | None = None) -> ResetResponse:
     await request.app.state.autopilot_manager.close()
     await request.app.state.run_manager.close()
     # A session boundary cannot erase a reservation while a human-approved
@@ -28,4 +28,7 @@ async def reset_demo(request: Request) -> ResetResponse:
                 request.app.state.store, request.app.state.event_bus, request.app.state.run_manager,
             )
             request.app.state.autopilot_manager.start()
+    # The reset clears autopilot state (off). The optional body turns it back on for both lanes.
+    if body is not None and body.autopilot:
+        await request.app.state.autopilot_manager.set(AutopilotRequest(enabled=True, lanes=["countersign", "unguarded"]))
     return ResetResponse(session_started_at=started)

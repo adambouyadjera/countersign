@@ -17,6 +17,7 @@
     }
   },
   "schemas": {
+    "DemoResetRequest": {"additionalProperties": false, "description": "Optional body for POST /api/demo/reset. autopilot=true enables both lanes after the reset.", "properties": {"autopilot": {"title": "Autopilot", "type": "boolean"}}, "title": "DemoResetRequest", "type": "object"},
     "ReconciliationExclusion": {"additionalProperties": false, "description": "Activity left out of the difference on purpose, reported with every ID so nothing is hidden.", "properties": {"reason": {"enum": ["unguarded_lane", "before_books_started"], "title": "Reason", "type": "string"}, "label": {"title": "Label", "type": "string"}, "side": {"enum": ["bank", "ledger"], "title": "Side", "type": "string"}, "count": {"title": "Count", "type": "integer"}, "amount_cents": {"title": "Amount Cents", "type": "integer"}, "transfer_ids": {"items": {"type": "string"}, "title": "Transfer Ids", "type": "array"}}, "required": ["reason", "label", "side", "count", "amount_cents", "transfer_ids"], "title": "ReconciliationExclusion", "type": "object"}
   }
 }

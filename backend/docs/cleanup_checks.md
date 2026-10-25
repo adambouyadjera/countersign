@@ -121,3 +121,17 @@ graph. A span is a marker only if its quote is a canary token,
 optionally preceded by the `Reference:` label; any other text keeps it. Stored
 extractions, stored events, raw graphs, audit records and leak-guard inputs are
 unchanged, and the leak guard still checks the canary. No API shape changed.
+
+## Item 7 — demo reset
+
+`tests/test_demo_reset.py` on the committed code: after a busy two-lane session,
+`POST /api/demo/reset` already emptied the approval queue, inbox and runs,
+reconciled to 0 from a new baseline, re-seeded the world and January-June
+archive, served the recorded bank-change evidence unchanged and did not touch
+the extraction cache. It ignored the body: `{"autopilot": true}` left autopilot
+off, and an invalid body was accepted.
+
+Now the optional body sets autopilot (true: both lanes, fresh run; false or
+absent: off) and is validated. The ledger is deliberately not cleared: journal
+entries are append-only (SQLite `ledger_no_delete` trigger) and remain the audit
+trail across resets; reconciliation is already scoped to the new session.
