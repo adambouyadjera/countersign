@@ -11,7 +11,7 @@ import { QueueDrawer } from './QueueDrawer'
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>()
-  return { ...actual, listApprovals: vi.fn() }
+  return { ...actual, listApprovals: vi.fn(), listPeople: vi.fn() }
 })
 
 const m = vi.mocked(client)
@@ -79,5 +79,25 @@ describe('<QueueDrawer>', () => {
     expect(screen.getByTestId('queue-count')).toHaveTextContent('?')
     await user.click(screen.getByRole('button', { name: /Countersign queue/ }))
     expect(screen.getByTestId('not-available')).toHaveTextContent('GET /api/approvals?status=pending → 404 not_found')
+  })
+
+  it('lists newest first with each card\'s actions collapsed until expanded', async () => {
+    const older: Approval = { ...pending, approval_id: 'a-old', invoice_number: 'INV-OLD', created_at: '2026-10-24T01:00:00Z' }
+    const newer: Approval = { ...pending, approval_id: 'a-new', invoice_number: 'INV-NEW', created_at: '2026-10-25T01:00:00Z' }
+    m.listApprovals.mockResolvedValue([older, newer])
+    m.listPeople.mockResolvedValue([])
+    const user = userEvent.setup()
+    renderDrawer()
+    await user.click(await screen.findByRole('button', { name: 'Countersign queue: 2 pending' }))
+    const list = screen.getByRole('list', { name: 'Pending approvals' })
+    const cards = within(list).getAllByRole('listitem')
+    expect(cards[0]).toHaveTextContent('INV-NEW')
+    expect(cards[1]).toHaveTextContent('INV-OLD')
+    expect(within(list).queryByRole('combobox', { name: 'Act as' })).toBeNull()
+    const decide = within(cards[0]!).getByRole('button', { name: 'Decide…' })
+    expect(decide).toHaveAttribute('aria-expanded', 'false')
+    await user.click(decide)
+    expect(within(cards[0]!).getByRole('combobox', { name: 'Act as' })).toBeInTheDocument()
+    expect(within(cards[1]!).queryByRole('combobox', { name: 'Act as' })).toBeNull()
   })
 })

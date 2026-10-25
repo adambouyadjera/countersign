@@ -18,6 +18,8 @@ export type OutcomeKind =
 export interface LaneOutcome {
   kind: OutcomeKind
   words: string[]
+  /** Held or blocked: the policy decision's reason codes. */
+  reasonCodes?: string[]
   amountCents?: number
   toAccountId?: string
 }
@@ -84,8 +86,23 @@ export function countersignOutcome(steps: readonly LaneEvent[], invoiceId: strin
       toAccountId: p.to_account_id,
     }
   }
-  if (mine.some((e) => e.type === 'payment.held')) return { kind: 'held', words: [...words, 'held'], amountCents: 0 }
-  if (decision?.payload.decision.outcome === 'BLOCK') return { kind: 'blocked', words: [...words, 'blocked'], amountCents: 0 }
+  const held = mine.find((e) => e.type === 'payment.held')
+  const reasonCodes = held?.type === 'payment.held' ? held.payload.reason_codes : decision?.payload.decision.reason_codes
+  if (held) return { kind: 'held', words: [...words, 'held'], amountCents: 0, reasonCodes }
+  if (decision?.payload.decision.outcome === 'BLOCK') return { kind: 'blocked', words: [...words, 'blocked'], amountCents: 0, reasonCodes }
   if (mine.some((e) => e.type === 'error')) return { kind: 'failed', words: [...words, 'failed'] }
   return { kind: mine.length > 0 ? 'in_progress' : 'waiting', words }
+}
+
+/**
+ * Instruction-like spans worth showing. Attack invoices carry a hidden reference marker
+ * whose canary is blanked to spaces; what remains (e.g. "Reference: ") is not text anyone wrote.
+ */
+export function meaningfulSpans<T extends { quote: string }>(spans: readonly T[]): T[] {
+  return spans.filter((s) => {
+    const q = s.quote.replace(/CS-CANARY-[A-Za-z0-9]+/g, '').trim()
+    if (q === '') return false
+    // A bare label with nothing after it, such as "Reference:" or "Ref #".
+    return !/^[A-Za-z][A-Za-z .-]{0,24}[:#]$/.test(q)
+  })
 }

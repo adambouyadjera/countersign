@@ -1,6 +1,7 @@
 import type { Person, VendorDetail } from '@/api/types'
 import { maskAccount } from '@/lib/account'
 import { accountSeenBefore, monthStrip } from '@/lib/caseFile'
+import { DemoHistoryTag } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { shortDate, summarizeVendor } from '@/lib/vendorHistory'
 
@@ -62,6 +63,14 @@ export function VendorStrip({ vendor, people, endIso, requestedAccount }: Vendor
           </>
         )}
       </p>
+      {(s.archivedPaid > 0 || s.verificationArchived) && (
+        <p data-testid="strip-archive" className="m-0 mt-1 flex flex-wrap items-center gap-1.5 text-meta text-muted">
+          <DemoHistoryTag />
+          {s.archivedPaid > 0 && `${s.archivedPaid} of ${s.paidCount} payments`}
+          {s.archivedPaid > 0 && s.verificationArchived && ' and '}
+          {s.verificationArchived && 'the verification'} are the seeded Jan–Jun archive
+        </p>
+      )}
       {requestedAccount && (
         <p className={cn('m-0 mt-1.5 text-small', asksNew ? 'text-bad' : 'text-muted')}>
           Today: asks for {maskAccount(requestedAccount)},{' '}

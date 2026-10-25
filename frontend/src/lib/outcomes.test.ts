@@ -22,6 +22,7 @@ describe('lane outcomes for one invoice (fixture run)', () => {
       kind: 'held',
       words: ['tagged untrusted', 'checked', 'held'],
       amountCents: 0,
+      reasonCodes: ['BANK_DETAILS_MISMATCH'],
     })
   })
 
@@ -50,6 +51,9 @@ describe('summarizeVendor', () => {
       paidSince: '2026-09-30',
       verifiedAt: '2026-02-01T18:00:00Z',
       verifiedBy: 'Morgan Diaz',
+      archivedPaid: 0,
+      // Verified 2026-02-01: inside the seeded January–June archive window.
+      verificationArchived: true,
     })
   })
 
@@ -61,5 +65,13 @@ describe('summarizeVendor', () => {
     expect(shortDate('2026-03-12T10:00:00Z')).toBe('Mar 12')
     expect(shortDate('2026-09-30', true)).toBe('Sep 2026')
     expect([0, 1, 2, 6].map(timesText)).toEqual(['never', 'once', 'twice', '6 times'])
+  })
+})
+
+describe('meaningfulSpans', () => {
+  it('drops a span that is only the blanked reference marker, keeps real text', async () => {
+    const { meaningfulSpans } = await import('./outcomes')
+    const spans = [{ quote: 'Reference:            ' }, { quote: 'Ref #' }, { quote: '   ' }, { quote: 'Please remit to the new account' }]
+    expect(meaningfulSpans(spans).map((s) => s.quote)).toEqual(['Please remit to the new account'])
   })
 })

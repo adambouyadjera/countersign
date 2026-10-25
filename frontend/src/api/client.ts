@@ -150,7 +150,10 @@ export const createRedTeamJob = (body: BodyJson<'create_redteam_job'>) =>
   json<OkJson<'create_redteam_job'>>('POST', '/api/redteam', body)
 export const getRedTeamJob = (jobId: string) =>
   json<OkJson<'get_redteam_job'>>('GET', `/api/redteam/${seg(jobId)}`)
-export const askAudit = (body: BodyJson<'ask_audit'>) => json<OkJson<'ask_audit'>>('POST', '/api/audit/ask', body)
+/** The Elastic agent runs its own queries; a live answer took 95 s. Give up after 150 s. */
+export const AUDIT_TIMEOUT_MS = 150_000
+export const askAudit = (body: BodyJson<'ask_audit'>) =>
+  json<OkJson<'ask_audit'>>('POST', '/api/audit/ask', body, { timeoutMs: AUDIT_TIMEOUT_MS })
 
 // ── Hyphenate track: people, vendors, ledger, inbox, autopilot, eval ─────────
 export const listPeople = () => json<OkJson<'list_people'>>('GET', '/api/people')

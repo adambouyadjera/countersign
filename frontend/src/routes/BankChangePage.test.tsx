@@ -114,6 +114,8 @@ describe('BankChangePage: recorded run', () => {
     expect(screen.getByTestId('run-source-label')).toHaveTextContent('Recording of a live run')
     expect(screen.getByTestId('replay-progress')).toHaveTextContent(`of ${replay.events.length}`)
     expect(screen.getByRole('region', { name: 'Unguarded agent' })).toHaveTextContent('No payments yet.')
+    // Countersign's planner hasn't run at this point of the replay: no leak-guard counts yet.
+    expect(screen.queryByTestId('leak-guard')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Skip to the end' }))
     expect(screen.getByRole('button', { name: 'Replay recorded run' })).toBeInTheDocument()
     expect(screen.getByTestId('no-payment')).toBeInTheDocument()

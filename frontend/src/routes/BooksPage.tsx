@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Approval, JournalEntry, Person } from '@/api/types'
 import { QueryView } from '@/components/casefile/Unavailable'
 import { SigSays } from '@/components/sig'
-import { Card, Chip, InkRow } from '@/components/ui'
+import { Card, Chip, InkButton, InkRow } from '@/components/ui'
 import { useApprovals, useJournal, usePeople, useReconciliation, useTrialBalance } from '@/hooks/queries'
 import { booksVerdict, journalNewestFirst, reconSummary, trialTotals } from '@/lib/books'
 import { formatCents, formatCentsShort } from '@/lib/money'
@@ -92,6 +92,7 @@ export function BooksPage() {
   const people = usePeople()
   const approvals = useApprovals()
   const [showAll, setShowAll] = useState(false)
+  const [showUnmatched, setShowUnmatched] = useState(false)
   const verdict = booksVerdict(tb.data, rec.data)
   const peopleList = people.data ?? []
 
@@ -214,6 +215,15 @@ export function BooksPage() {
                     </div>
                     {s.unmatched.length === 0 ? (
                       <p className="m-0 mt-3 font-semibold text-good">Every withdrawal matches a journal entry by id.</p>
+                    ) : !showUnmatched ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2.5 text-small">
+                        <span data-testid="unmatched-count" className="font-semibold text-bad">
+                          {s.unmatched.length} unmatched {s.unmatched.length === 1 ? 'item' : 'items'}
+                        </span>
+                        <InkButton size="sm" variant="secondary" onClick={() => setShowUnmatched(true)}>
+                          Show {s.unmatched.length}
+                        </InkButton>
+                      </div>
                     ) : (
                       <ul aria-label="Unmatched items" className="m-0 mt-3 list-none p-0 text-small text-bad">
                         {s.unmatched.map((i, n) => (

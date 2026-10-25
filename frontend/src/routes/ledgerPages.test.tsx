@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import approvalsFixture from '@fixtures/approvals.json'
 import auditFixture from '@fixtures/audit_answer.json'
 import autopilotFixture from '@fixtures/autopilot.json'
+import batchFixture from '@fixtures/batch.json'
+import runFixture from '@fixtures/run.json'
 import evalFixture from '@fixtures/eval_job.json'
 import { job as recordedBefore } from '@evidence/eval_results.json'
 import { job as recordedAfter } from '@evidence/eval_results_after_semantic.json'
@@ -43,6 +45,8 @@ vi.mock('@/api/client', async (importOriginal) => {
     getHealth: vi.fn(),
     getAutopilot: vi.fn(),
     setAutopilot: vi.fn(),
+    getRun: vi.fn(),
+    getBatch: vi.fn(),
   }
 })
 
@@ -108,6 +112,10 @@ describe('<BooksPage>', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("The books and the bank don't agree yet")
     expect(document.querySelector('[data-expression="pleased"]')).toBeNull()
     expect(document.querySelector('[data-expression="serious"]')).toBeInTheDocument()
+    // Collapsed into a count until asked for.
+    expect(screen.queryByRole('list', { name: 'Unmatched items' })).toBeNull()
+    expect(screen.getByTestId('unmatched-count')).toHaveTextContent('1 unmatched item')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show 1' }))
     expect(screen.getByRole('list', { name: 'Unmatched items' })).toHaveTextContent('bank only: t-extra · $180.00 · no entry')
   })
 
@@ -278,9 +286,37 @@ describe('<AuditPage>', () => {
   })
 
   it("labels Elastic's health and says when there is no run for the event log", async () => {
+    m.getAutopilot.mockResolvedValue({ ...autopilotFixture, run_id: null } as R<typeof client.getAutopilot>)
     renderIt(<AuditPage />)
     expect(await screen.findByTestId('elastic-health')).toHaveTextContent('elastic offline')
-    expect(screen.getByRole('complementary', { name: 'Event log' })).toHaveTextContent('Run a batch on the console')
+    expect(await screen.findByText('No run yet: run a batch on the console or turn autopilot on.')).toBeInTheDocument()
+  })
+
+  it('falls back to the autopilot run for the event log when no run is open', async () => {
+    m.getAutopilot.mockResolvedValue({ ...autopilotFixture, enabled: true, run_id: 'run-autopilot-1' } as R<typeof client.getAutopilot>)
+    m.getRun.mockResolvedValue({ ...(runFixture as R<typeof client.getRun>), run_id: 'run-autopilot-1' })
+    m.getBatch.mockResolvedValue(batchFixture as R<typeof client.getBatch>)
+    renderIt(<AuditPage />)
+    const log = screen.getByRole('complementary', { name: 'Event log' })
+    expect(await within(log).findByText(/autopilot run, latest/i)).toBeInTheDocument()
+    expect(log).toHaveTextContent("From the autopilot run's event stream (run-autopilot-1)")
+    expect(m.getRun).toHaveBeenCalledWith('run-autopilot-1')
+  })
+
+  it('shows the elapsed time while the auditor works, and offers Retry after a timeout', async () => {
+    let fail: (e: Error) => void = () => {}
+    m.askAudit.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)))
+    const user = userEvent.setup()
+    renderIt(<AuditPage />)
+    await user.click(screen.getByRole('button', { name: 'Who approved what today?' }))
+    const waiting = await screen.findByTestId('audit-waiting')
+    expect(waiting).toHaveTextContent(/^\d+s · The Elastic agent runs its own queries; answers can take 1-2 minutes\.$/)
+    fail(new ApiError({ status: 0, code: 'timeout', message: 'No response from POST /api/audit/ask after 150 s.', envelope: false }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('No response from POST /api/audit/ask after 150 s.')
+    m.askAudit.mockResolvedValueOnce(auditFixture as R<typeof client.askAudit>)
+    await user.click(within(alert).getByRole('button', { name: 'retry' }))
+    expect(await screen.findByRole('article', { name: 'Answer' })).toBeInTheDocument()
   })
 })
 

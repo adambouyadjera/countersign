@@ -189,7 +189,7 @@ describe('<ConsolePage>', () => {
     expect(duel.querySelectorAll('[data-failed="true"]')).toHaveLength(0)
     expect(screen.queryByRole('article', { name: /Approval for/ })).toBeNull()
     expect(screen.getByRole('complementary', { name: 'One sentence, two agents' })).toHaveTextContent(
-      'No instruction-like text in INV-001.',
+      'No instruction-like text found in INV-001.',
     )
   })
 

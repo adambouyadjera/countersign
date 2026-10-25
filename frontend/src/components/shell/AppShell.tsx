@@ -87,8 +87,8 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        {/* The case file mockup's header has no autopilot status; it shows who you act as. */}
-        {!onCase && !redTeam && <AutopilotStatus interactive />}
+        {/* On every page, so autopilot's state is never a guess (Attack Lab and case files included). */}
+        <AutopilotStatus interactive />
         <QueueDrawer />
         <MockBadge />
         {onCase && <ActingAs className="ml-auto" />}

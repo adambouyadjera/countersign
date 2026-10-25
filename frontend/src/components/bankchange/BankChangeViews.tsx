@@ -198,7 +198,8 @@ export function LanePanel({
         </ul>
       )}
 
-      {isCs && (
+      {/* The leak-guard counts describe the planner's run: shown once the planner has proposed its plan. */}
+      {isCs && lane.planned && (
         <p data-testid="leak-guard" className="m-0 font-mono text-meta text-muted">
           leak guard:{' '}
           {leakGuard

@@ -202,6 +202,7 @@ export function ConsolePage() {
         selectedId={shownId}
         onSelect={selectInvoice}
         totals={totals}
+        autopilotOn={autopilot.data?.enabled === true}
         mail={<MailPanel batch={batch} runId={run?.run_id} />}
         controls={
           <>
@@ -238,8 +239,8 @@ export function ConsolePage() {
                   : `${shownStatus ? VERB[shownStatus] : 'ready for'} ${shown.invoice_number} · ${shown.vendor_name} · ${formatCents(shown.amount_cents, shown.currency)}`}
             </p>
             {run && (
-              <p className="m-0 flex items-center gap-x-2 text-meta whitespace-nowrap text-muted">
-                <span data-testid="stream-status" className="min-w-0 truncate">
+              <p className="m-0 flex flex-wrap items-center gap-x-2 text-meta text-muted">
+                <span data-testid="stream-status" className="min-w-0 break-all">
                   run {run.run_id} · {STREAM_TEXT[stream]}
                   {state.completed && ' · run completed'} · seq {state.lastSeq || '—'}
                 </span>

@@ -68,7 +68,14 @@ async function open(e: Entry) {
   const transport = await getTransport()
   // Unsubscribed or reopened while the transport loaded.
   if (gen !== e.generation || entries.get(e.runId) !== e) return
-  const source = transport.openEventSource(runEventsUrl(e.runId), { lastEventId: e.lastSeq || undefined })
+  let source: RunEventSource
+  try {
+    source = transport.openEventSource(runEventsUrl(e.runId), { lastEventId: e.lastSeq || undefined })
+  } catch {
+    // Couldn't even open (no EventSource, bad URL): treat it as a stream error and back off.
+    scheduleReconnect(e)
+    return
+  }
   e.source = source
   const onMessage = (msg: MessageEvent<string>) => {
     if (gen !== e.generation) return

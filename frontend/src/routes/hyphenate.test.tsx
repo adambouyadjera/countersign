@@ -10,6 +10,7 @@ import { ApiError } from '@/api/errors'
 import type { Approval, Person, VendorDetail } from '@/api/types'
 import { CountersignActions } from '@/components/casefile/CountersignActions'
 import { isArchivedAccount, isArchivedPayment } from '@/lib/vendorArchive'
+import { VendorStrip } from '@/components/casefile/VendorStrip'
 import { VendorPage } from './VendorPage'
 
 vi.mock('@/api/client', async (importOriginal) => {
@@ -100,5 +101,24 @@ describe('<CountersignActions>', () => {
     const options = within(screen.getByRole('combobox', { name: 'Act as' })).getAllByRole('option').map((o) => o.getAttribute('value'))
     expect(options).toEqual(['person-ap-manager', 'person-controller', 'person-vendor-admin'])
     expect(screen.queryByTestId('over-limit')).toBeNull()
+  })
+})
+
+describe('<VendorStrip> demo history', () => {
+  it('tags the case file strip when its history comes from the seeded archive', () => {
+    renderAt(<VendorStrip vendor={vendor} people={people} endIso="2026-10-24T00:00:00Z" />)
+    const note = screen.getByTestId('strip-archive')
+    expect(within(note).getByTestId('demo-history')).toHaveTextContent('demo history')
+    expect(note).toHaveTextContent('1 of 2 payments and the verification are the seeded Jan–Jun archive')
+  })
+
+  it('has no tag when nothing is from the archive', () => {
+    const live: VendorDetail = {
+      ...vendor,
+      account_history: [{ ...vendor.account_history[0]!, valid_from: '2026-10-01T00:00:00Z', verified_at: '2026-10-01T00:00:00Z' }],
+      payments: [vendor.payments[1]!],
+    }
+    renderAt(<VendorStrip vendor={live} people={people} endIso="2026-10-24T00:00:00Z" />)
+    expect(screen.queryByTestId('demo-history')).toBeNull()
   })
 })
