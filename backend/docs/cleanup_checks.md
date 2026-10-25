@@ -104,3 +104,20 @@ labelled exclusions with every ID, and keeps unknown bank activity in the
 difference. `tests/test_reconciliation.py` reproduces both causes on the
 committed code (-604,000 vs -270,000 for a two-lane run; -333 for a pre-ledger
 transfer) and passes after the change.
+
+## Item 6 — hidden reference marker in UI spans
+
+Reproduced with `tests/test_canary_marker_spans.py` on the committed code: an
+extractor that flags the white 1-point `Reference: CS-CANARY-XXXX` line (as the
+live extractor did) produced a UI-facing `fields.extracted` span
+`'Reference:               '` after display masking.
+
+The presentation layer (`display_model`, used by SSE events, decisions, graphs,
+documents and transcripts) now drops marker-only spans before masking: from
+`instruction_like_spans`, and as graph span nodes together with their edges and
+evidence references; decisions (REST and `policy.decision` events) drop
+evidence ids of those hidden nodes, computed from the stored extraction and
+graph. A span is a marker only if its quote is a canary token,
+optionally preceded by the `Reference:` label; any other text keeps it. Stored
+extractions, stored events, raw graphs, audit records and leak-guard inputs are
+unchanged, and the leak guard still checks the canary. No API shape changed.

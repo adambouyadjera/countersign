@@ -6,7 +6,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.contract_models import AgentTranscript, Batch, ErrorResponse, PlannerTranscript, PolicyDecision, ProvenanceGraph, Run, RunRequest
 from app.security.graph import overlay_resolution
-from app.security.presentation import display_model
+from app.security.presentation import display_model, is_reference_marker, marker_node_ids
 
 
 router = APIRouter()
@@ -27,12 +27,30 @@ async def get_run(run_id: str, request: Request) -> Run:
     return run
 
 
+def _hidden_marker_nodes(store, run_id: str, invoice_id: str) -> set:
+    """Graph node ids of marker-only spans for one invoice, from its stored extraction and graph.
+
+    Decisions and decision events reference graph nodes by id; the marker's node is hidden
+    on display, so those references are dropped too. Stored records are not changed.
+    """
+    from app.contract_models import SourceSpan
+    from app.security.graph import source_node_id
+
+    extraction = store.get_record("extractions", f"{run_id}:{invoice_id}") or {}
+    hidden = {source_node_id(SourceSpan.model_validate(span)) for span in extraction.get("instruction_like_spans", [])
+              if isinstance(span, dict) and is_reference_marker(span.get("quote"))}
+    return hidden | marker_node_ids(store.get_record("graphs", f"{run_id}:{invoice_id}"))
+
+
 @router.get("/runs/{run_id}/decisions", response_model=list[PolicyDecision], operation_id="get_run_decisions",
             responses={404: {"model": ErrorResponse}})
 async def get_run_decisions(run_id: str, request: Request) -> list[PolicyDecision]:
     if request.app.state.store.get_run(run_id) is None:
         raise HTTPException(404, "Run not found")
-    return [display_model(PolicyDecision.model_validate(record)) for record in request.app.state.store.list_records("decisions", run_id=run_id)]
+    store = request.app.state.store
+    return [display_model(PolicyDecision.model_validate(record),
+                          _hidden_marker_nodes(store, run_id, record["invoice_id"]))
+            for record in store.list_records("decisions", run_id=run_id)]
 
 
 @router.get("/runs/{run_id}/planner_transcript", response_model=PlannerTranscript,
@@ -107,8 +125,10 @@ async def get_run_events(
 
     async def messages() -> AsyncIterator[ServerSentEvent]:
         async for event in request.app.state.event_bus.subscribe(run_id, last_event_id):
+            hidden = (_hidden_marker_nodes(request.app.state.store, run_id, event.payload.decision.invoice_id)
+                      if event.type == "policy.decision" else frozenset())
             yield ServerSentEvent(
-                id=str(event.seq), event=event.type, data=display_model(event).model_dump_json()
+                id=str(event.seq), event=event.type, data=display_model(event, hidden).model_dump_json()
             )
 
     return EventSourceResponse(
