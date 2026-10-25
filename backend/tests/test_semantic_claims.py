@@ -75,23 +75,58 @@ def test_date_objects_and_durable_metadata_survive_restart(store):
 
 
 @pytest.mark.parametrize("status", ["pending", "completed"])
-def test_semantic_paid_transfer_history_is_not_limited_to_current_session(store, status):
+def test_pre_reset_paid_or_pending_transfer_does_not_block_new_demo_session(store, status):
     earlier = store.session_started_at - timedelta(days=90)
     store.save_record("transfers", "historic-transfer", {
         "transfer_id": "historic-transfer", "invoice_number": "ORIGINAL",
         "lane": "countersign", "transfer_status": status,
-        "session_started_at": earlier.isoformat(), "ts": earlier.isoformat(),
+        # A later provider refresh must not move an old submission into the
+        # current demo session.
+        "session_started_at": earlier.isoformat(), "ts": store.session_started_at.isoformat(),
         **identity(),
     })
+    assert not store.has_session_payment("NEW", **identity())
+    assert store.claim_session_payment("NEW", "second", **identity())
+    assert store.get_record("transfers", "historic-transfer") is not None
+
+
+@pytest.mark.parametrize("status", ["pending", "completed", "uncertain"])
+def test_current_session_transfer_still_blocks_exact_and_semantic_duplicates(store, status):
+    store.save_record("transfers", "current-transfer", {
+        "transfer_id": "current-transfer", "invoice_number": "ORIGINAL",
+        "lane": "countersign", "transfer_status": status,
+        "session_started_at": store.session_started_at.isoformat(), **identity(),
+    })
+    assert store.has_session_payment("ORIGINAL")
     assert store.has_session_payment("NEW", **identity())
     assert not store.claim_session_payment("NEW", "second", **identity())
 
 
-def test_semantic_claim_history_survives_session_reset(store):
+@pytest.mark.parametrize("current", [True, False])
+def test_legacy_transfer_timestamp_scopes_semantic_history_without_a_session_tag(store, current):
+    created = store.session_started_at + timedelta(seconds=1 if current else -1)
+    store.save_record("transfers", "legacy-transfer", {
+        "transfer_id": "legacy-transfer", "invoice_number": "ORIGINAL",
+        "lane": "countersign", "transfer_status": "pending", "ts": created.isoformat(), **identity(),
+    })
+    assert store.has_session_payment("ORIGINAL") is current
+    assert store.has_session_payment("NEW", **identity()) is current
+
+
+def test_eval_fixture_prior_paid_claim_still_blocks_exact_and_semantic_duplicates(store):
+    assert store.claim_session_payment("ARCHIVED-EVAL-NUMBER", "committed-fixture-prior-paid", **identity())
+    store.finish_session_payment("ARCHIVED-EVAL-NUMBER", state="fixture_prior_paid")
+    assert store.has_session_payment("ARCHIVED-EVAL-NUMBER")
+    assert store.has_session_payment("NEW", **identity())
+    assert not store.claim_session_payment("NEW", "second", **identity())
+
+
+def test_semantic_claim_from_earlier_session_is_not_a_current_reservation(store):
     assert store.claim_session_payment("ORIGINAL", "first", **identity())
     store._db().execute("UPDATE metadata SET value=? WHERE key='session_started_at'",
                         ((store.session_started_at + timedelta(days=1)).isoformat(),))
-    assert store.has_session_payment("NEW", **identity())
+    assert not store.has_session_payment("NEW", **identity())
+    assert store.claim_session_payment("NEW", "second", **identity())
 
 
 @pytest.mark.parametrize("record_changes", [
@@ -101,6 +136,7 @@ def test_semantic_claim_history_survives_session_reset(store):
 def test_unguarded_and_explicitly_failed_transfers_are_not_semantic_paid_history(store, record_changes):
     store.save_record("transfers", "transfer", {
         "transfer_id": "transfer", "invoice_number": "ORIGINAL",
+        "session_started_at": store.session_started_at.isoformat(),
         "lane": "countersign", "transfer_status": "completed", **identity(), **record_changes,
     })
     assert not store.has_session_payment("NEW", **identity())
