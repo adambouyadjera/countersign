@@ -18,7 +18,7 @@ const KNOWN_CODES: readonly ErrorCode[] = [
  */
 export class ApiError extends Error {
   readonly status: number
-  readonly code: ErrorCode | 'network_error'
+  readonly code: ErrorCode | 'network_error' | 'timeout'
   readonly detail?: Record<string, unknown>
   /** True when the body matched the contract's error shape. */
   readonly envelope: boolean
@@ -81,6 +81,11 @@ export function parseApiError(status: number, bodyText: string, statusText = '')
 export function networkError(cause: unknown): ApiError {
   const msg = cause instanceof Error ? cause.message : String(cause)
   return new ApiError({ status: 0, code: 'network_error', message: `Network error: ${msg}`, envelope: false })
+}
+
+/** A request that got no complete response within its time limit. */
+export function timeoutError(what: string, ms: number): ApiError {
+  return new ApiError({ status: 0, code: 'timeout', message: `No response from ${what} after ${Math.round(ms / 1000)} s.`, envelope: false })
 }
 
 export function isApiError(e: unknown): e is ApiError {

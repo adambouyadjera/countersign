@@ -1,6 +1,6 @@
 import { maskCanary } from '@/lib/canary'
 import { apiBaseUrl } from '@/lib/env'
-import { ApiError, networkError, parseApiError } from './errors'
+import { ApiError, networkError, parseApiError, timeoutError } from './errors'
 import { getTransport } from './transport'
 import type { BodyJson, OkJson } from './types'
 
@@ -23,9 +23,14 @@ function query(params: Record<string, string | undefined>): string {
   return s ? `?${s}` : ''
 }
 
-async function send(method: Method, path: string, body?: unknown, accept = 'application/json'): Promise<Response> {
+interface SendOptions {
+  accept?: string
+  signal?: AbortSignal
+}
+
+async function send(method: Method, path: string, body?: unknown, opts: SendOptions = {}): Promise<Response> {
   const t = await getTransport()
-  const headers: Record<string, string> = { Accept: accept }
+  const headers: Record<string, string> = { Accept: opts.accept ?? 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   let res: Response
   try {
@@ -33,6 +38,7 @@ async function send(method: Method, path: string, body?: unknown, accept = 'appl
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: opts.signal,
     })
   } catch (e) {
     throw networkError(e)
@@ -44,10 +50,16 @@ async function send(method: Method, path: string, body?: unknown, accept = 'appl
   return res
 }
 
-async function json<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  const res = await send(method, path, body)
+async function readJson<T>(method: Method, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await send(method, path, body, { signal })
+  let raw: string
+  try {
+    raw = await res.text()
+  } catch (e) {
+    throw networkError(e)
+  }
   // Canary markers are masked by the backend; mask again so none can ever reach the screen.
-  const text = maskCanary(await res.text())
+  const text = maskCanary(raw)
   try {
     return JSON.parse(text) as T
   } catch {
@@ -57,6 +69,28 @@ async function json<T>(method: Method, path: string, body?: unknown): Promise<T>
       message: `Response from ${path} was not valid JSON`,
       envelope: false,
     })
+  }
+}
+
+/**
+ * JSON request. With `timeoutMs`, gives up when the whole response (headers and body) hasn't
+ * arrived in time and rejects with a `timeout` ApiError, so a stuck request can't hang the UI.
+ */
+async function json<T>(method: Method, path: string, body?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+  if (!opts.timeoutMs) return readJson<T>(method, path, body)
+  const ms = opts.timeoutMs
+  const ctrl = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      ctrl.abort()
+      reject(timeoutError(`${method} ${path}`, ms))
+    }, ms)
+  })
+  try {
+    return await Promise.race([readJson<T>(method, path, body, ctrl.signal), expired])
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -72,10 +106,12 @@ export const getDocument = (documentId: string) =>
   json<OkJson<'get_document'>>('GET', `/api/documents/${seg(documentId)}`)
 /** The original PDF. Use documentPdfUrl for an <iframe>/<a> instead when possible. */
 export const getDocumentPdf = async (documentId: string): Promise<Blob> =>
-  (await send('GET', `/api/documents/${seg(documentId)}/pdf`, undefined, 'application/pdf')).blob()
+  (await send('GET', `/api/documents/${seg(documentId)}/pdf`, undefined, { accept: 'application/pdf' })).blob()
 export const documentPdfUrl = (documentId: string) => url(`/api/documents/${seg(documentId)}/pdf`)
+/** Creating an attack makes no model or bank calls; 20 s without a response means something is stuck. */
+export const ATTACK_TIMEOUT_MS = 20_000
 export const createAttack = (body: BodyJson<'create_attack'>) =>
-  json<OkJson<'create_attack'>>('POST', '/api/attacks', body)
+  json<OkJson<'create_attack'>>('POST', '/api/attacks', body, { timeoutMs: ATTACK_TIMEOUT_MS })
 
 // ── Runs ─────────────────────────────────────────────────────────────────────
 export const createRun = (body: BodyJson<'create_run'>) => json<OkJson<'create_run'>>('POST', '/api/runs', body)

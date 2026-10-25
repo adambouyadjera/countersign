@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 // Neutral filler text: these tests check the flow, not the wording of an attack.
 const TEXT = 'neutral test text'
 
-test('attack lab: draw vendors, write, send; autopilot is off in mock, so the lab starts the run and the console plays it', async ({ page }) => {
+test('attack lab: draw vendors, write, send; autopilot is off in mock, so it says so and the Console runs the batch', async ({ page }) => {
   await page.goto('/attack')
   await expect(page.getByRole('heading', { level: 1, name: 'Write an invoice to fool Sig' })).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: 'MOCK DATA' })).toBeVisible()
@@ -17,10 +17,15 @@ test('attack lab: draw vendors, write, send; autopilot is off in mock, so the la
   await page.getByRole('button', { name: '+ attacker account' }).click()
   await expect(page.getByLabel('Your text')).toHaveValue(`${TEXT} {{ATTACKER_ACCOUNT}}`)
   await expect(page.getByTestId('preview-text')).toContainText('[attacker account]')
-  await expect(page.getByText('Autopilot is off, so sending also starts the run')).toBeVisible()
+  await expect(page.getByText('Autopilot is off: it waits in the inbox until you run the batch from the Console')).toBeVisible()
 
   await page.getByRole('button', { name: 'Send it to the AP inbox' }).click()
+  await expect(page.getByTestId('autopilot-off')).toHaveText(/Autopilot is off: turn it on or run the batch from the Console\./)
+  // The sending state has ended.
+  await expect(page.getByRole('button', { name: 'Send it to the AP inbox' })).toBeEnabled()
+  await page.getByRole('link', { name: 'open the Console →' }).click()
   await expect(page).toHaveURL(/\/console$/)
+  await page.getByRole('button', { name: /run batch/ }).click()
   await expect(page.getByTestId('stream-status')).toContainText('run completed', { timeout: 30_000 })
   await expect(page.getByRole('list', { name: 'Invoices in batch' }).getByRole('listitem')).toHaveCount(5)
 })

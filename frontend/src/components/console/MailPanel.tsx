@@ -35,7 +35,7 @@ export function MailPanel({ batch, runId }: { batch: Batch | null; runId: string
         <span>autopilot {autopilot.data ? (on ? 'on' : 'off') : '—'}</span>
       </div>
       {autoRun && autoRun !== runId && (
-        <InkButton size="sm" variant="secondary" onClick={() => open.mutate(autoRun)} disabled={open.isPending}>
+        <InkButton size="sm" variant="secondary" onClick={() => open.mutate({ runId: autoRun })} disabled={open.isPending}>
           {open.isPending ? 'opening…' : 'watch the autopilot run'}
         </InkButton>
       )}

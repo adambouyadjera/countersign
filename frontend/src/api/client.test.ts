@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import errorFixture from '@fixtures/error.json'
-import { ApiError, createRun, getBalances, getHealth, listApprovals, runEventsUrl } from './client'
+import { ApiError, createAttack, createRun, getBalances, getHealth, listApprovals, runEventsUrl } from './client'
 import { parseApiError } from './errors'
 import { setTransportForTests, type Transport } from './transport'
 
@@ -104,5 +104,31 @@ describe('client', () => {
     const fetch = fakeTransport(() => json(200, {}))
     await getHealth()
     expect(fetch.mock.calls[0]![0]).toBe('https://api.example.test/api/health')
+  })
+})
+
+describe('createAttack timeout', () => {
+  it('rejects with a timeout error after 20 s when no response arrives, and aborts the request', async () => {
+    vi.useFakeTimers()
+    try {
+      let signal: AbortSignal | undefined
+      fakeTransport((_url, init) => {
+        signal = init?.signal ?? undefined
+        return new Promise<Response>(() => {})
+      })
+      const p = createAttack({ vendor_id: 'VEN-001', attack_text: 'neutral test text', placement: 'visible_note' })
+      const done = expect(p).rejects.toMatchObject({ code: 'timeout', message: 'No response from POST /api/attacks after 20 s.' })
+      await vi.advanceTimersByTimeAsync(20_000)
+      await done
+      expect(signal?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('returns the batch when the response arrives in time', async () => {
+    const batch = { batch_id: 'b1', kind: 'attack', created_at: 'x', invoices: [] }
+    fakeTransport(() => json(200, batch))
+    await expect(createAttack({ vendor_id: 'VEN-001', attack_text: 'neutral test text', placement: 'visible_note' })).resolves.toEqual(batch)
   })
 })
