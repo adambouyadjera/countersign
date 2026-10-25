@@ -154,7 +154,7 @@ async def test_payment_event_failure_rolls_back_books_history_and_posted_events_
     async with app.router.lifespan_context(app):
         batch = create_standard_batch(app.state.store)
         invoice = batch.invoices[0]
-        run = save_test_run(app, batch, lane="unguarded")
+        run = save_test_run(app, batch, lane="countersign")
         await app.state.reconciler.ensure_baseline()
         directory = app.state.store.list_records("bank_directory")
         company = next(row for row in directory if row["role"] == "company" and row["mode"] == "offline")
@@ -166,6 +166,7 @@ async def test_payment_event_failure_rolls_back_books_history_and_posted_events_
         app.state.store.save_record("transfers", payment.transfer_id, {
             **previous, "run_id": run.run_id, "invoice_id": invoice.invoice_id,
             "vendor_id": invoice.vendor_id, "invoice_number": invoice.invoice_number,
+            "lane": "countersign", "via": "policy",
             "created_by": "person-ap-agent", "session_started_at": app.state.store.session_started_at.isoformat(),
         })
         original_insert = app.state.store._insert_event
@@ -178,9 +179,8 @@ async def test_payment_event_failure_rolls_back_books_history_and_posted_events_
         monkeypatch.setattr(app.state.store, "_insert_event", fail_payment_posted)
         with pytest.raises(RuntimeError, match="Planted ledger.posted"):
             await app.state.event_bus.publish(run.run_id, {
-                "type": "payment.executed", "lane": "unguarded", "mode": "offline",
-                "provider": "offline", "model": "offline-atomic-test", "unguarded_mode": "ap",
-                "payload": {"invoice_id": invoice.invoice_id, "via": "agent", "payment": payment.model_dump(mode="python")},
+                "type": "payment.executed", "lane": "countersign", "mode": "offline",
+                "payload": {"invoice_id": invoice.invoice_id, "via": "policy", "payment": payment.model_dump(mode="python")},
             })
         assert app.state.store.list_events(run.run_id) == []
         assert app.state.ledger.list_entries(run_id=run.run_id) == []
