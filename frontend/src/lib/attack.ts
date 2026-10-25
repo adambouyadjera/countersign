@@ -26,3 +26,11 @@ export function inboxItemFor<T extends { document_id: string }>(items: readonly 
   const docs = new Set(batch.invoices.map((i) => i.document_id))
   return items.find((i) => docs.has(i.document_id))
 }
+
+/**
+ * The document POST /api/attacks queued: only the chosen vendor's invoice goes to the
+ * inbox (backend/docs/autopilot.md). The response is a plain Batch with no inbox item id.
+ */
+export function attackedDocument(batch: Batch, vendorId: string): string | undefined {
+  return batch.invoices.find((i) => i.vendor_id === vendorId)?.document_id
+}

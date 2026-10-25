@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -103,23 +103,28 @@ describe('<AttackLabPage>', () => {
     expect(screen.getByText('Too long: 601 of 600 characters.')).toBeInTheDocument()
   })
 
-  it('autopilot off: sends the attack, starts the run itself and opens the console on it', async () => {
+  it('autopilot off: sends the attack, says so, and leaves the batch for the Console to run', async () => {
     const user = userEvent.setup()
     const router = renderLab()
-    await screen.findByText('Autopilot is off, so sending also starts the run')
+    await screen.findByText('Autopilot is off: it waits in the inbox until you run the batch from the Console')
     await user.selectOptions(screen.getByLabelText('Pretend to be'), 'VEN-005')
     await user.click(screen.getByLabelText(/Footer/))
     await user.type(screen.getByLabelText('Your text'), TEXT)
     await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/console'))
+    expect(await screen.findByTestId('autopilot-off')).toHaveTextContent(
+      'Autopilot is off: turn it on or run the batch from the Console.',
+    )
     expect(m.createAttack).toHaveBeenCalledWith({ vendor_id: 'VEN-005', attack_text: TEXT, placement: 'footer' })
-    expect(m.createRun).toHaveBeenCalledWith({ batch_id: 'batch-attack-1', lanes: ['unguarded', 'countersign'] })
+    // The sending state ended and nothing started a run behind the user's back.
+    expect(screen.getByRole('button', { name: 'Send it to the AP inbox' })).toBeEnabled()
+    expect(m.createRun).not.toHaveBeenCalled()
+    expect(router.state.location.pathname).toBe('/attack')
     expect(useConsoleStore.getState().batch?.batch_id).toBe('batch-attack-1')
-    expect(useConsoleStore.getState().run?.run_id).toBe(run.run_id)
   })
 
   it('autopilot on: does not start a run, waits for the inbox item to name one, then opens it', async () => {
     m.getAutopilot.mockResolvedValue({ enabled: true, lanes: ['unguarded', 'countersign'], run_id: null, last_checked_at: null })
+    // Only the chosen vendor's invoice (the first, VEN-001 by default) is queued.
     const doc = attackBatch.invoices[0]!.document_id
     m.listInboxItems
       .mockResolvedValueOnce([{ item_id: 'inbox-9', document_id: doc, sender: 'x', received_at: '2026-10-24T00:00:00Z', status: 'queued' }])
@@ -135,6 +140,7 @@ describe('<AttackLabPage>', () => {
     await user.type(screen.getByLabelText('Your text'), TEXT)
     await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Sent. Waiting for autopilot to pick it up')
+    expect(await screen.findByTestId('inbox-item-status')).toHaveAttribute('data-status', 'queued')
     await waitFor(() => expect(router.state.location.pathname).toBe('/console'), { timeout: 5000 })
     expect(m.createRun).not.toHaveBeenCalled()
     expect(m.getRun).toHaveBeenCalledWith('run-auto-1')
@@ -142,6 +148,8 @@ describe('<AttackLabPage>', () => {
     // The console gets the autopilot run's aggregate batch, not the five-invoice attack batch.
     expect(m.getBatch).toHaveBeenCalledWith('batch-autopilot')
     expect(useConsoleStore.getState().batch?.batch_id).toBe('batch-autopilot')
+    // …focused on the invoice made from the sent document.
+    expect(useConsoleStore.getState().selectedInvoiceId).toBe(aggregate.invoices[0]!.invoice_id)
   })
 
   it('says when autopilot leaves the unguarded lane out', async () => {
@@ -165,12 +173,64 @@ describe('<AttackLabPage>', () => {
     expect(m.createRun).not.toHaveBeenCalled()
   })
 
-  it('says "not available yet" when POST /api/attacks is a 404', async () => {
-    m.createAttack.mockRejectedValue(new ApiError({ status: 404, code: 'not_found', message: 'nope', envelope: true }))
+  it('shows a 404 with the server message as-is (unknown vendor), and offers Retry', async () => {
+    m.createAttack.mockRejectedValue(new ApiError({ status: 404, code: 'not_found', message: 'Unknown vendor VEN-404', envelope: true }))
     const user = userEvent.setup()
     renderLab()
     await user.type(screen.getByLabelText('Your text'), TEXT)
     await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
-    expect(await screen.findByTestId('not-available')).toHaveTextContent('Attacks are not available yet · POST /api/attacks → 404 not_found')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Unknown vendor VEN-404')
+    expect(within(alert).getByRole('button', { name: 'retry' })).toBeInTheDocument()
   })
+
+  it('shows a 422 message verbatim', async () => {
+    const msg = 'attack_text must contain 1 to 600 characters after control characters are stripped.'
+    m.createAttack.mockRejectedValue(new ApiError({ status: 422, code: 'validation_error', message: msg, envelope: true }))
+    const user = userEvent.setup()
+    renderLab()
+    await user.type(screen.getByLabelText('Your text'), TEXT)
+    await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(msg)
+  })
+
+  it('ends the sending state on a timeout and retries', async () => {
+    m.createAttack
+      .mockRejectedValueOnce(new ApiError({ status: 0, code: 'timeout', message: 'No response from POST /api/attacks after 20 s.', envelope: false }))
+      .mockResolvedValueOnce(attackBatch)
+    const user = userEvent.setup()
+    renderLab()
+    await user.type(screen.getByLabelText('Your text'), TEXT)
+    await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('No response from POST /api/attacks after 20 s.')
+    expect(screen.getByRole('button', { name: 'Send it to the AP inbox' })).toBeEnabled()
+    await user.click(within(alert).getByRole('button', { name: 'retry' }))
+    expect(await screen.findByTestId('autopilot-off')).toBeInTheDocument()
+    expect(m.createAttack).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops waiting for autopilot after 20 s and offers Retry', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      m.getAutopilot.mockResolvedValue({ enabled: true, lanes: ['unguarded', 'countersign'], run_id: null, last_checked_at: null })
+      m.listInboxItems.mockResolvedValue([])
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderLab()
+      await screen.findByText('Autopilot picks it up, no click')
+      await user.type(screen.getByLabelText('Your text'), TEXT)
+      await user.click(screen.getByRole('button', { name: 'Send it to the AP inbox' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Sent. Waiting for autopilot to pick it up')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_500)
+      })
+      expect(screen.getByRole('status')).toHaveTextContent("Sent, but autopilot hasn't picked it up after 20 s.")
+      expect(screen.getByRole('button', { name: 'Send it to the AP inbox' })).toBeEnabled()
+      await user.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(screen.getByRole('status')).toHaveTextContent('Sent. Waiting for autopilot to pick it up')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
 })

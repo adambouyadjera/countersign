@@ -88,21 +88,27 @@ export function ConsolePage() {
   // An autopilot run's aggregate batch grows with each admitted inbox item: re-read it (and the inbox) on inbox.received.
   const received = state.system.filter((e) => e.type === 'inbox.received').length
   const batchId = run?.batch_id
+  // Debounced: subscribing replays the run's history, which can hold many inbox.received events at once.
   useEffect(() => {
     if (received === 0 || !batchId) return
-    void queryClient.invalidateQueries({ queryKey: ['inbox'] })
     let stale = false
-    getBatch(batchId)
-      .then((b) => !stale && refreshBatch(b))
-      .catch(() => {})
+    const t = setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: ['inbox'] })
+      getBatch(batchId)
+        .then((b) => !stale && refreshBatch(b))
+        .catch(() => {})
+    }, 400)
     return () => {
       stale = true
+      clearTimeout(t)
     }
   }, [received, batchId, queryClient, refreshBatch])
   // Each processing slice reports lane status; the inbox item's status changes with it.
   const laneStatusEvents = cs.steps.filter((e) => e.type === 'lane.status').length + ug.steps.filter((e) => e.type === 'lane.status').length
   useEffect(() => {
-    if (laneStatusEvents > 0) void queryClient.invalidateQueries({ queryKey: ['inbox'] })
+    if (laneStatusEvents === 0) return
+    const t = setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['inbox'] }), 400)
+    return () => clearTimeout(t)
   }, [laneStatusEvents, queryClient])
 
   // The autopilot run processes its inbox by itself; a manual run of its aggregate batch isn't offered.

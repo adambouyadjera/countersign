@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { createAttack, createBatch, createRun } from '@/api/client'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { createAttack, createBatch } from '@/api/client'
 import { isApiError } from '@/api/errors'
-import type { Batch, InvoiceSummary, Lane } from '@/api/types'
+import type { Batch, InboxItem, InvoiceSummary } from '@/api/types'
 import { RequestError } from '@/components/console/RequestError'
 import { SigSays } from '@/components/sig'
 import { Card, Chip, InkButton, InkRow } from '@/components/ui'
 import { useAutopilot, useInbox, useVendor } from '@/hooks/queries'
 import { useOpenRun } from '@/hooks/useOpenRun'
 import { maskAccount } from '@/lib/account'
-import { ATTACK_MAX, ATTACKER_TOKEN, attackTextProblem, inboxItemFor, insertAt } from '@/lib/attack'
+import { ATTACK_MAX, ATTACKER_TOKEN, attackTextProblem, attackedDocument, inboxItemFor, insertAt } from '@/lib/attack'
 import { cn } from '@/lib/cn'
 import { formatCents } from '@/lib/money'
 import { useConsoleStore } from '@/state/consoleStore'
@@ -23,7 +23,8 @@ const PLACEMENTS: { value: Placement; title: string; hint: string }[] = [
   { value: 'footer', title: 'Footer', hint: 'note to automated systems' },
 ]
 
-const RUN_LANES: Lane[] = ['unguarded', 'countersign']
+/** How long to wait for autopilot to admit the item (it polls every 5 s) before offering Retry. */
+const PICKUP_TIMEOUT_MS = 20_000
 
 /** One option per vendor in the batch, from its invoice there. */
 function vendorsOf(batch: Batch | null): InvoiceSummary[] {
@@ -51,7 +52,6 @@ export function AttackLabPage() {
   const navigate = useNavigate()
   const batch = useConsoleStore((s) => s.batch)
   const setBatch = useConsoleStore((s) => s.setBatch)
-  const setRun = useConsoleStore((s) => s.setRun)
 
   const vendors = useMemo(() => vendorsOf(batch), [batch])
   const [vendorId, setVendorId] = useState<string | undefined>(undefined)
@@ -66,38 +66,51 @@ export function AttackLabPage() {
 
   const drawBatch = useMutation({ mutationFn: () => createBatch({ kind: 'standard' }), onSuccess: setBatch })
 
-  const [sent, setSent] = useState<Batch | null>(null)
-  const startRun = useMutation({
-    mutationFn: (b: Batch) => createRun({ batch_id: b.batch_id, lanes: RUN_LANES }),
-    onSuccess: (run, b) => {
-      setBatch(b)
-      setRun(run)
-      navigate('/console')
-    },
-  })
+  // What was sent: the response batch and the one document POST /api/attacks queued in the inbox.
+  const [sent, setSent] = useState<{ batch: Batch; documentId?: string; at: number } | null>(null)
   const send = useMutation({
     mutationFn: () => createAttack({ vendor_id: chosen!.vendor_id, attack_text: text, placement }),
     onSuccess: (b) => {
-      setSent(b)
-      // With autopilot on, the backend starts the run from the inbox; otherwise we start it.
-      if (!autopilotOn) startRun.mutate(b)
+      setSent({ batch: b, documentId: attackedDocument(b, chosen!.vendor_id), at: Date.now() })
+      // Autopilot off: nothing processes the inbox. The console can run this batch by hand.
+      if (!autopilotOn) setBatch(b)
     },
   })
 
-  // Autopilot on: wait for the attack's inbox item to name its run, then open the console on it.
-  const waiting = Boolean(sent) && autopilotOn
-  const inbox = useInbox(waiting)
-  const item = sent && inbox.data ? inboxItemFor(inbox.data, sent) : undefined
-  // Open the autopilot run with its aggregate batch (admitted inbox items), not the batch the attack came from.
+  // Autopilot on: follow the queued item (queued → processing → processed); once it names
+  // its run, open the console on that run (the long-lived autopilot run and its aggregate batch).
   const pickedUp = useOpenRun(() => navigate('/console'))
   const { mutate: openRun, isIdle: notOpened } = pickedUp
+  const following = Boolean(sent) && autopilotOn && notOpened
+  const inbox = useInbox(following)
+  const item =
+    sent && inbox.data
+      ? (sent.documentId ? inbox.data.find((i) => i.document_id === sent.documentId) : undefined) ??
+        inboxItemFor(inbox.data, sent.batch)
+      : undefined
   useEffect(() => {
-    if (waiting && item?.run_id && notOpened) openRun(item.run_id)
-  }, [waiting, item?.run_id, notOpened, openRun])
+    if (following && item?.run_id) openRun({ runId: item.run_id, documentId: item.document_id })
+  }, [following, item?.run_id, item?.document_id, openRun])
+
+  // Never wait forever: 20 s without the item naming a run ends the wait with Retry.
+  const [pickupTimedOut, setPickupTimedOut] = useState<number | null>(null)
+  const waitingSince = sent?.at
+  const timedOut = following && !item?.run_id && pickupTimedOut === waitingSince
+  useEffect(() => {
+    if (!following || item?.run_id || waitingSince === undefined) return
+    const left = PICKUP_TIMEOUT_MS - (Date.now() - waitingSince)
+    const t = setTimeout(() => setPickupTimedOut(waitingSince), Math.max(0, left))
+    return () => clearTimeout(t)
+  }, [following, item?.run_id, waitingSince])
+  const retryPickup = () => {
+    setSent((s) => (s ? { ...s, at: Date.now() } : s))
+    void inbox.refetch()
+  }
 
   const problem = attackTextProblem(text)
   const count = [...text].length
-  const busy = send.isPending || startRun.isPending || waiting
+  const waiting = following && !timedOut
+  const busy = send.isPending || waiting
   const lanesNote =
     autopilot.data && autopilotOn
       ? autopilot.data.lanes.includes('unguarded') && autopilot.data.lanes.includes('countersign')
@@ -232,19 +245,21 @@ export function AttackLabPage() {
               className="!min-h-12 !px-[22px] text-face !font-bold"
               disabled={Boolean(problem) || !chosen || busy}
             >
-              {send.isPending ? 'sending…' : startRun.isPending ? 'starting the run…' : 'Send it to the AP inbox'}
+              {send.isPending ? 'sending…' : 'Send it to the AP inbox'}
             </InkButton>
             {problem && text.length > 0 && <p className="m-0 text-small text-bad">{problem}</p>}
             <SendStatus
               send={send}
-              startRun={startRun}
+              onRetrySend={() => send.mutate()}
+              sent={Boolean(sent)}
+              autopilot={autopilot.data ? (autopilotOn ? 'on' : 'off') : autopilot.isError ? 'unknown' : 'loading'}
               waiting={waiting}
-              itemLine={
-                item ? `in the inbox as ${item.item_id} · ${item.status}${item.run_id ? ` · run ${item.run_id}` : ''}` : undefined
-              }
+              timedOut={timedOut}
+              onRetryPickup={retryPickup}
+              item={item}
               inboxError={inbox.error}
               pickedUpError={pickedUp.error}
-              onStartMyself={() => sent && startRun.mutate(sent)}
+              onRetryOpen={() => item?.run_id && openRun({ runId: item.run_id, documentId: item.document_id })}
             />
           </div>
         </Card>
@@ -293,8 +308,9 @@ export function AttackLabPage() {
                 <li>Autopilot picks it up, no click</li>
               ) : (
                 <li>
-                  {autopilot.isError ? 'Autopilot status is unavailable' : 'Autopilot is off'}, so sending also starts the
-                  run
+                  {autopilot.isError
+                    ? 'Autopilot status is unavailable'
+                    : 'Autopilot is off: it waits in the inbox until you run the batch from the Console'}
                 </li>
               )}
               {autopilotOn && autopilot.data && !autopilot.data.lanes.includes('unguarded') ? (
@@ -311,54 +327,98 @@ export function AttackLabPage() {
   )
 }
 
+const ITEM_STEPS: InboxItem['status'][] = ['queued', 'processing', 'processed']
+
+/** The inbox item's status as it moves: queued → processing → processed (processed means finished, not paid). */
+function ItemSteps({ item }: { item: InboxItem }) {
+  const at = ITEM_STEPS.indexOf(item.status)
+  return (
+    <p data-testid="inbox-item-status" data-status={item.status} className="m-0 font-mono text-meta">
+      {item.item_id} ·{' '}
+      {ITEM_STEPS.map((s, i) => (
+        <span key={s}>
+          {i > 0 && <span className="text-muted"> → </span>}
+          <span className={i === at ? 'font-bold text-fg' : i < at ? 'text-muted' : 'text-muted opacity-60'}>{s}</span>
+        </span>
+      ))}
+      {item.run_id && <span className="text-muted"> · run {item.run_id}</span>}
+    </p>
+  )
+}
+
 function SendStatus({
   send,
-  startRun,
+  onRetrySend,
+  sent,
+  autopilot,
   waiting,
-  itemLine,
+  timedOut,
+  onRetryPickup,
+  item,
   inboxError,
   pickedUpError,
-  onStartMyself,
+  onRetryOpen,
 }: {
-  send: { isError: boolean; error: Error | null; isSuccess: boolean }
-  startRun: { isError: boolean; error: Error | null }
+  send: { isError: boolean; error: Error | null; isPending: boolean }
+  onRetrySend: () => void
+  sent: boolean
+  autopilot: 'on' | 'off' | 'unknown' | 'loading'
   waiting: boolean
-  itemLine?: string
+  timedOut: boolean
+  onRetryPickup: () => void
+  item?: InboxItem
   inboxError: Error | null
   pickedUpError: Error | null
-  onStartMyself: () => void
+  onRetryOpen: () => void
 }): ReactNode {
+  if (send.isPending) return null
   if (send.isError) {
     const e = send.error
-    if (isApiError(e) && e.status === 404) {
+    if (isApiError(e) && e.status === 404 && e.code === 'not_found' && !e.envelope) {
       return (
         <p data-testid="not-available" className="m-0 text-small text-muted">
           Attacks are not available yet · POST /api/attacks → 404 {e.code}
         </p>
       )
     }
-    return <RequestError title="Could not send it" error={e} />
+    // 422 and 429 carry the server's own message; RequestError shows it as-is.
+    return <RequestError title="Could not send it" error={e} onRetry={onRetrySend} />
   }
-  if (startRun.isError) {
-    return <RequestError title="Sent, but the run did not start" error={startRun.error} onRetry={onStartMyself} />
-  }
-  if (waiting) {
+  if (!sent) return null
+  if (autopilot === 'off') {
     return (
-      <div role="status" className="text-small text-muted">
-        <p className="m-0">Sent. Waiting for autopilot to pick it up{itemLine ? `: ${itemLine}` : '.'}</p>
-        {(inboxError || pickedUpError) && (
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            <RequestError
-              title={inboxError ? 'Could not read the inbox' : 'Could not open the run'}
-              error={inboxError ?? pickedUpError}
-            />
-            <InkButton size="sm" variant="secondary" className="self-start" onClick={onStartMyself}>
-              start the run myself
-            </InkButton>
-          </div>
-        )}
+      <div role="status" data-testid="autopilot-off" className="flex flex-col gap-1 text-small">
+        <p className="m-0 font-semibold">Autopilot is off: turn it on or run the batch from the Console.</p>
+        <Link to="/console" className="font-mono text-accent">
+          open the Console →
+        </Link>
       </div>
     )
   }
-  return null
+  if (autopilot !== 'on') {
+    return (
+      <p role="status" className="m-0 text-small text-muted">
+        Sent. Can&apos;t tell whether autopilot is on (GET /api/autopilot {autopilot === 'loading' ? 'pending' : 'failed'}).
+      </p>
+    )
+  }
+  return (
+    <div role="status" className="flex flex-col gap-1.5 text-small">
+      <p className="m-0 text-muted">
+        {timedOut
+          ? 'Sent, but autopilot hasn\'t picked it up after 20 s.'
+          : item?.run_id
+            ? 'Picked up. Opening the Console on its run…'
+            : 'Sent. Waiting for autopilot to pick it up…'}
+      </p>
+      {item ? <ItemSteps item={item} /> : waiting && <p className="m-0 font-mono text-meta text-muted">not in GET /api/inbox yet</p>}
+      {timedOut && (
+        <InkButton size="sm" variant="secondary" className="self-start" onClick={onRetryPickup}>
+          Retry
+        </InkButton>
+      )}
+      {inboxError && <RequestError title="Could not read the inbox" error={inboxError} onRetry={onRetryPickup} />}
+      {pickedUpError && <RequestError title="Could not open the run" error={pickedUpError} onRetry={onRetryOpen} />}
+    </div>
+  )
 }
