@@ -11,6 +11,12 @@
     "InboxItem": {
       "source": {"default": "inbox", "enum": ["inbox", "attack_lab"], "title": "Source", "type": "string"}
     },
+    "VendorAccountHistory": {
+      "archive": {"title": "Archive", "type": "boolean"}
+    },
+    "VendorPayment": {
+      "archive": {"title": "Archive", "type": "boolean"}
+    },
     "Reconciliation": {
       "scope": {"const": "countersign_lane", "title": "Scope", "type": "string"},
       "excluded": {"items": {"$ref": "#/components/schemas/ReconciliationExclusion"}, "title": "Excluded", "type": "array"}

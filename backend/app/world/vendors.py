@@ -61,6 +61,23 @@ def seed_vendor_history(store) -> None:
             })
 
 
+ARCHIVE_JOURNAL_PREFIX = "example-history-"
+ARCHIVE_NOTE = "(includes seeded demo history)"
+
+
+def is_archive_payment(payment: dict) -> bool:
+    """Seeded archive payments carry example-history-* journal references, never real journal IDs."""
+    return str(payment.get("journal_entry_id", "")).startswith(ARCHIVE_JOURNAL_PREFIX)
+
+
+def is_archive_account(history: dict, row: dict) -> bool:
+    """The opening row written once by seed_vendor_history (fixed seed timestamps and verifier)."""
+    return (history.get("source") == "demo_historical_seed"
+            and row.get("valid_from") == _INITIAL_VALID_FROM
+            and row.get("verified_at") == _INITIAL_VERIFIED_AT
+            and row.get("verified_by") == "person-vendor-admin")
+
+
 def vendor_detail(store, vendor_id: str) -> VendorDetail:
     # Read the account master and history from one snapshot, even while a
     # different process records a verified banking update.
@@ -72,8 +89,10 @@ def vendor_detail(store, vendor_id: str) -> VendorDetail:
     return VendorDetail(
         vendor_id=vendor_id, name=vendor["name"],
         account_on_file_display=vendor.get("account_on_file_display", vendor.get("remit_account_number", "")),
-        account_history=history.get("account_history", []),
-        payments=sorted(history.get("payments", []), key=lambda item: (item["date"], item["journal_entry_id"])),
+        account_history=[{**row, "archive": is_archive_account(history, row)}
+                         for row in history.get("account_history", [])],
+        payments=[{**row, "archive": is_archive_payment(row)} for row in
+                  sorted(history.get("payments", []), key=lambda item: (item["date"], item["journal_entry_id"]))],
     )
 
 
@@ -209,8 +228,11 @@ def history_check(store, vendor: dict | None, requested_account: str) -> tuple[b
         actor = store.get_record("people", verified["verified_by"]) if verified else None
         verifier = actor["name"] if actor else verified["verified_by"] if verified else "unrecorded verifier"
         verified_on = verified["verified_at"][:10] if verified else "an unrecorded date"
-        message = (f"Paid {len(reference)} times since {since} to the account ending {reference_account[-4:]}, "
-                   f"verified by {verifier} on {verified_on}.")
+        # Say so when the count or the cited verification comes from the seeded January-June archive.
+        archived = (any(is_archive_payment(item) for item in reference)
+                    or (verified is not None and is_archive_account(history, verified)))
+        message = (f"Paid {len(reference)} times since {since}{' ' + ARCHIVE_NOTE if archived else ''} "
+                   f"to the account ending {reference_account[-4:]}, verified by {verifier} on {verified_on}.")
     else:
         message = "No prior vendor payments are recorded; independent review is required."
     verification = latest_account_verification(store, vendor["vendor_id"], requested)

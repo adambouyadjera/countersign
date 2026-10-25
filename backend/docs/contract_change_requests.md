@@ -282,3 +282,13 @@ existing error envelope and existing codes: HTTP 504 with code
 HTTP 429 with code `rate_limited` when Elastic Agent Builder itself returns
 HTTP 429. Exact bodies are in `backend/docs/elastic_notes.md`. All other
 failures keep the existing 503.
+
+## Cleanup item 11 — vendor archive flags
+
+Add optional `archive?: boolean` to `VendorAccountHistory` and `VendorPayment`.
+`GET /api/vendors/{vendor_id}` always includes it: true for the seeded
+January-June demo archive (payments with `example-history-*` journal references,
+and the opening account row written by the seed), false for real postings and
+verified bank changes. It is computed on read and never stored. The
+`VENDOR_HISTORY` policy message adds "(includes seeded demo history)" whenever
+the counted payments or the cited verification come from that archive.

@@ -166,3 +166,13 @@ reported as a generic 503. There was no server-side limit (only the 180 s HTTP
 client timeout). Added a 140 s limit returning 504 with a clear message, and a
 429 `rate_limited` response for Elastic's 429. Shapes in `docs/elastic_notes.md`;
 tests in `tests/test_audit_timeout.py`.
+
+## Item 11 — demo history wording
+
+Reproduced with `tests/test_vendor_archive_labels.py` on the committed code: the
+check read "Paid 6 times since January 2026 to the account ending 1111, verified
+by Morgan Diaz on 2026-03-12." with no archive label, and vendor rows had no
+archive flag. Now the message reads "Paid 6 times since January 2026 (includes
+seeded demo history) to the account ending 1111, ..." when archive payments or
+the archive verification are cited, and vendor rows carry a computed `archive`
+flag. Recorded evidence files keep their original wording.

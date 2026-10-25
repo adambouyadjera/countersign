@@ -495,6 +495,8 @@ class VendorAccountHistory(ContractModel):
     valid_to: Timestamp | None
     verified_by: str
     verified_at: Timestamp
+    # Computed on read (vendor_detail): the row is the seeded January-June demo archive.
+    archive: StrictBool = OptionalField()
 
 
 class VendorPayment(ContractModel):
@@ -502,6 +504,8 @@ class VendorPayment(ContractModel):
     amount_cents: StrictInt
     account_display: str
     journal_entry_id: str
+    # Computed on read (vendor_detail): the row is the seeded January-June demo archive.
+    archive: StrictBool = OptionalField()
 
 
 class VendorDetail(ContractModel):

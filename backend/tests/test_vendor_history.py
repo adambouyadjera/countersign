@@ -189,4 +189,5 @@ def test_mixed_account_history_counts_only_payments_to_the_named_account(store):
     assert "new on-file account ending 9999" in message
     passed, message = history_check(store, vendor, "100100001111")
     assert passed
-    assert "Paid 6 times since January 2026 to the account ending 1111" in message
+    # The 1111 payments are the seeded January-June archive, and the message says so.
+    assert "Paid 6 times since January 2026 (includes seeded demo history) to the account ending 1111" in message
