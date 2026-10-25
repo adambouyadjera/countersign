@@ -1,0 +1,49 @@
+{
+  "recorded_at": "2026-10-25T00:49:34.272895+00:00",
+  "tools": [
+    {
+      "tool_id": "held_payments_by_reason",
+      "http_status": 200,
+      "result_types": [
+        "query",
+        "esql_results"
+      ],
+      "row_counts": [
+        33
+      ]
+    },
+    {
+      "tool_id": "payments_to_accounts_not_on_file",
+      "http_status": 200,
+      "result_types": [
+        "query",
+        "esql_results"
+      ],
+      "row_counts": [
+        0
+      ]
+    },
+    {
+      "tool_id": "run_summary",
+      "http_status": 200,
+      "result_types": [
+        "query",
+        "esql_results"
+      ],
+      "row_counts": [
+        273
+      ]
+    },
+    {
+      "tool_id": "attack_batches",
+      "http_status": 200,
+      "result_types": [
+        "query",
+        "esql_results"
+      ],
+      "row_counts": [
+        24
+      ]
+    }
+  ]
+}

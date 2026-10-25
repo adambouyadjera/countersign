@@ -1,0 +1,68 @@
+{
+  "recorded": true,
+  "recorded_at": "2026-10-25T01:05:18.315437+00:00",
+  "run_id": "run-430a671e8f1f4743ba8cbc38e41af7f0",
+  "provider": "elastic_agent_builder",
+  "agent_id": "countersign-audit-analyst",
+  "questions": [
+    {
+      "question": "Which payments were held because the payee came from an untrusted document?",
+      "http_status": 200,
+      "response": {
+        "answer": "I found one held payment in run `run-430a671e8f1f4743ba8cbc38e41af7f0` that was held specifically due to a document-derived payee with a bank details mismatch.\n\n**Held payment \u2014 document-derived payee issue**\n\n| Field | Value |\n|---|---|\n| Invoice | INV-003 (invoice_id: `invoice-eea2da651a0b409fb80fdc2f6d5c97e3`) |\n| Vendor | Golden Gate Sanitation (VEN-003) |\n| Amount | $640.00 (64000 cents) |\n| Reason code | `BANK_DETAILS_MISMATCH` |\n| Payee document-derived? | **Yes** (`payee_document_derived: true`) |\n| Requested account | `999900009999` |\n| Account on file (trusted) | `300300003333` |\n| Mode | live |\n| Timestamp | 2026-10-25T01:02:49.003Z |\n| Lane | countersign |\n\n**Interpretation:** This invoice's payee/bank details were derived from the submitted document rather than the trusted vendor file, and that requested account (`999900009999`) did not match the account on file (`300300003333`) \u2014 triggering a `BANK_DETAILS_MISMATCH` deterministic hold. This is a policy HOLD decision, not a completed payment; no funds were submitted or transferred for this invoice.\n\nNo other HOLD events in this run had a document-derived payee flag set to true \u2014 this was the only one matching your criteria. Result set was well under the 1000-row limit, so this is complete for the specified run.",
+        "agent_id": "countersign-audit-analyst",
+        "conversation_id": "cd8f98f1-7fc1-48e8-a639-5982d8a5b413",
+        "steps": [
+          {
+            "tool_id": "held_payments_by_reason",
+            "esql": "FROM countersign-events\n| WHERE\n    type == \"policy.decision\" AND outcome == \"HOLD\"\n      AND (\"run-430a671e8f1f4743ba8cbc38e41af7f0\" == \"\"\n        OR run_id == \"run-430a671e8f1f4743ba8cbc38e41af7f0\")\n| SORT `ts` DESC, seq DESC\n| KEEP\n    run_id, seq, `ts`, lane, invoice_id, invoice_number, vendor_id, vendor_name,\n    reason_codes, amount_cents, requested_account, account_on_file,\n    payee_document_derived, mode\n| LIMIT 1000",
+            "row_count": 1
+          }
+        ]
+      },
+      "source_file": "elastic_live_run-430a671e8f1f4743ba8cbc38e41af7f0.json"
+    },
+    {
+      "question": "Summarize actual payment submissions and holds for this run, with paid amount and modes. Distinguish holds from payments.",
+      "http_status": 200,
+      "response": {
+        "answer": "## Summary for run `run-430a671e8f1f4743ba8cbc38e41af7f0`\n\n**Mode:** All activity in this run is tagged `live`.\n\n### Actual payment submissions (payment.executed, outcome PAID)\n- **4 invoices paid**, totaling **$2,700.00** (270,000 cents submitted)\n- All 4 occurred under `payment.executed` with outcome `PAID`, mode `live`\n- None of these payments went to accounts not on the trusted vendor file (the `payments_to_accounts_not_on_file` check returned zero rows) \u2014 so all 4 live submissions were to on-file accounts\n- Note: `payment.executed` records a bank *submission*, not confirmed settlement \u2014 the indexed evidence does not establish that funds have cleared/settled\n\n### Holds (distinct from payments \u2014 not money movement)\n- **1 invoice held**: `INV-003` (invoice_id `invoice-eea2da651a0b409fb80fdc2f6d5c97e3`), vendor **Golden Gate Sanitation** (VEN-003)\n  - Reason code: `BANK_DETAILS_MISMATCH`\n  - Amount at hold: $640.00 (64,000 cents) \u2014 **not paid**, held before submission\n  - Requested account `999900009999` did not match the account on file `300300003333`\n  - `payee_document_derived = true` \u2014 the payee/account was derived from the submitted document rather than confirmed against trusted vendor records, and it mismatched the account on file, triggering the hold\n  - Mode: `live`; also reflected once as `payment.held` (outcome HOLD) in the run summary, consistent with this single hold\n\n### Reconciliation note\n- Run summary shows 5 invoices loaded total (`document.loaded`); of those, 4 were allowed (`policy.decision` ALLOW) and paid, and 1 was held (`policy.decision` HOLD) due to the bank details mismatch \u2014 accounting for all 5 invoices in the run.\n- All counts are well under the 1000-row tool limit, so results are not truncated.\n\n**Bottom line:** 4 payments actually submitted live for $2,700.00 total, all to accounts on file. 1 separate invoice ($640.00) was blocked at the hold stage for a bank-details mismatch and was **not** paid \u2014 it should not be counted as a payment.",
+        "agent_id": "countersign-audit-analyst",
+        "conversation_id": "c1a3d517-2a2e-4486-9655-f747f9d588f2",
+        "steps": [
+          {
+            "tool_id": "run_summary",
+            "esql": "FROM countersign-events\n| WHERE\n    \"run-430a671e8f1f4743ba8cbc38e41af7f0\" == \"\"\n      OR run_id == \"run-430a671e8f1f4743ba8cbc38e41af7f0\"\n| STATS\n    event_count = COUNT(*), invoice_count = COUNT_DISTINCT(invoice_id),\n    submitted_amount_cents\n      = SUM(CASE(type == \"payment.executed\", amount_cents, 0))\n      BY run_id, lane, type, outcome, mode\n| SORT run_id, lane, type\n| LIMIT 1000",
+            "row_count": 11
+          },
+          {
+            "tool_id": "held_payments_by_reason",
+            "esql": "FROM countersign-events\n| WHERE\n    type == \"policy.decision\" AND outcome == \"HOLD\"\n      AND (\"run-430a671e8f1f4743ba8cbc38e41af7f0\" == \"\"\n        OR run_id == \"run-430a671e8f1f4743ba8cbc38e41af7f0\")\n| SORT `ts` DESC, seq DESC\n| KEEP\n    run_id, seq, `ts`, lane, invoice_id, invoice_number, vendor_id, vendor_name,\n    reason_codes, amount_cents, requested_account, account_on_file,\n    payee_document_derived, mode\n| LIMIT 1000",
+            "row_count": 1
+          },
+          {
+            "tool_id": "payments_to_accounts_not_on_file",
+            "esql": "FROM countersign-events\n| WHERE\n    type == \"payment.executed\" AND payee_on_file == FALSE\n      AND (\"run-430a671e8f1f4743ba8cbc38e41af7f0\" == \"\"\n        OR run_id == \"run-430a671e8f1f4743ba8cbc38e41af7f0\")\n| SORT `ts` DESC, seq DESC\n| KEEP\n    run_id, seq, `ts`, lane, invoice_id, invoice_number, vendor_id, vendor_name,\n    amount_cents, requested_account, account_on_file, payee_on_file,\n    transfer_id, mode\n| LIMIT 1000",
+            "row_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "question": "Were any payments in this run submitted to accounts not on file? Cite the run ID and answer only from the payment tool results.",
+      "http_status": 200,
+      "response": {
+        "answer": "For run **run-430a671e8f1f4743ba8cbc38e41af7f0**, the `payments_to_accounts_not_on_file` tool returned **zero results** (no rows matched).\n\n**Answer:** No, the indexed evidence does not show any `payment.executed` records in this run with `payee_on_file == false`. Based solely on this payment tool result, no payments were submitted to accounts not on file for this run.",
+        "agent_id": "countersign-audit-analyst",
+        "conversation_id": "719e6256-895a-4def-9a19-351a6b4d9a62",
+        "steps": [
+          {
+            "tool_id": "payments_to_accounts_not_on_file",
+            "esql": "FROM countersign-events\n| WHERE\n    type == \"payment.executed\" AND payee_on_file == FALSE\n      AND (\"run-430a671e8f1f4743ba8cbc38e41af7f0\" == \"\"\n        OR run_id == \"run-430a671e8f1f4743ba8cbc38e41af7f0\")\n| SORT `ts` DESC, seq DESC\n| KEEP\n    run_id, seq, `ts`, lane, invoice_id, invoice_number, vendor_id, vendor_name,\n    amount_cents, requested_account, account_on_file, payee_on_file,\n    transfer_id, mode\n| LIMIT 1000",
+            "row_count": 0
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -74,9 +74,9 @@ def build_adapters(
     audit: AuditSink = (
         OfflineAuditSink(store) if settings.elastic_mode == "offline" else
         LiveAuditSink(
-            key=settings.elastic_api_key, key_name="ELASTIC_API_KEY",
-            url=_endpoint(settings.elastic_url, "_security/_authenticate"),
-            auth="elastic", transport=transport,
+            key=settings.elastic_api_key, base_url=settings.elastic_url, store=store,
+            kibana_url=settings.kibana_url, agent_id=settings.elastic_agent_id,
+            transport=transport,
         )
     )
     if settings.extractor_mode == "live":

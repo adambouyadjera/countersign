@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException
 
 from app.adapters import HealthChecker, build_adapters
 from app.adapters.bank import BankError
-from app.api import approvals, attacks, demo, evaluation, evidence, finance, health, inbox, runs, world
+from app.api import approvals, attacks, audit, demo, evaluation, evidence, finance, health, inbox, runs, world
 from app.config import Settings, get_settings
 from app.contract_models import ErrorDetail, ErrorResponse, RunEvent
 from app.events import EventBus
@@ -80,7 +80,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
         app.state.ledger.initialize()
         app.state.reconciler = Reconciler(store, app.state.ledger, app.state.adapters.bank)
         app.state.bookkeeper = Bookkeeper(store, app.state.ledger, app.state.reconciler)
-        app.state.event_bus = EventBus(store, bookkeeper=app.state.bookkeeper)
+        app.state.event_bus = EventBus(store, bookkeeper=app.state.bookkeeper, audit=app.state.adapters.audit)
         app.state.health_checker = HealthChecker(app.state.adapters)
         app.state.payment_executor = PaymentExecutor(store, app.state.event_bus, app.state.adapters.bank)
         app.state.approval_manager = ApprovalManager(store, app.state.event_bus, app.state.payment_executor)
@@ -93,6 +93,13 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
             seed_people(store, autonomy_limit_cents=configuration.agent_autonomy_limit_cents)
             if configuration.nessie_mode == "offline":
                 await seed_world(store, app.state.adapters.bank)
+            if app.state.adapters.audit.mode == "live":
+                store.backfill_audit_outbox()
+
+                async def audit_failure(run_id, message):
+                    await app.state.event_bus.report_audit_failure(run_id, message)
+
+                app.state.adapters.audit.start(on_failure=audit_failure)
             app.state.autopilot_manager.start()
             yield
         finally:
@@ -102,6 +109,9 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
             close_extractor = getattr(app.state.adapters.extractor, "aclose", None)
             if close_extractor is not None:
                 await close_extractor()
+            close_audit = getattr(app.state.adapters.audit, "aclose", None)
+            if close_audit is not None:
+                await close_audit()
             store.close()
 
     app = FastAPI(title="Countersign API", version="1.2.0", lifespan=lifespan)
@@ -162,6 +172,7 @@ def create_app(settings: Settings | None = None, *, db_path: str | Path | None =
     api.include_router(finance.router)
     api.include_router(evaluation.router)
     api.include_router(inbox.router)
+    api.include_router(audit.router)
     api.include_router(evidence.router)
     app.include_router(api)
 

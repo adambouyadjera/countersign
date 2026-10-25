@@ -20,11 +20,43 @@ class EventBus:
     sequence counter so it survives application restarts.
     """
 
-    def __init__(self, store: Store, bookkeeper=None) -> None:
+    def __init__(self, store: Store, bookkeeper=None, audit=None) -> None:
         self.store = store
         self.bookkeeper = bookkeeper
+        self.audit = audit
         self._lock = asyncio.Lock()
         self._subscribers: dict[str, set[asyncio.Queue[RunEvent]]] = defaultdict(set)
+
+    def _notify_audit(self):
+        # The durable outbox already owns these events. Never put an HTTP
+        # request or a sink failure in the financial publication path.
+        if self.audit is not None and self.audit.mode == "live":
+            try:
+                self.audit.notify()
+            except Exception:
+                pass  # The sink also polls the durable queue.
+
+    async def report_audit_failure(self, run_id: str, message: str) -> bool:
+        """Commit the once-per-run marker and its SSE/outbox event together.
+
+        Acquire the asynchronous bus lock before claiming the notification.
+        There are no awaits between the durable claim, event and commit, so
+        cancellation cannot suppress a notification that was never published.
+        """
+        async with self._lock:
+            with self.store.transaction():
+                if not self.store.audit_run_known(run_id):
+                    return False
+                if not self.store.claim_audit_error(run_id):
+                    return False
+                event = self.store.append_event(run_id, {
+                    "type": "error", "lane": "system", "mode": "live",
+                    "payload": {"message": message, "recoverable": True},
+                })
+            for queue in self._subscribers.get(run_id, ()):
+                queue.put_nowait(event.model_copy(deep=True))
+            self._notify_audit()
+            return True
 
     async def publish(self, run_id: str, event: RunEvent | Mapping[str, Any]) -> RunEvent:
         async with self._lock:
@@ -37,6 +69,7 @@ class EventBus:
             for item in delivered:
                 for queue in self._subscribers.get(run_id, ()):
                     queue.put_nowait(item.model_copy(deep=True))
+            self._notify_audit()
             return validated
 
     def _posted_events(self, run_id, entries, mode):
@@ -59,6 +92,7 @@ class EventBus:
             for item in delivered:
                 for queue in self._subscribers.get(item.run_id, ()):
                     queue.put_nowait(item.model_copy(deep=True))
+            self._notify_audit()
 
     async def reverse_entry(self, entry_id, *, created_by, memo):
         """Append a correction and its event together in the original run."""
@@ -82,6 +116,7 @@ class EventBus:
             for item in delivered:
                 for queue in self._subscribers.get(run_id, ()):
                     queue.put_nowait(item.model_copy(deep=True))
+            self._notify_audit()
             return entry
 
     async def subscribe(self, run_id: str, last_seq: int = 0) -> AsyncIterator[RunEvent]:

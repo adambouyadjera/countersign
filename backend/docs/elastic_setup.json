@@ -1,0 +1,37 @@
+{
+  "agent_id": "countersign-audit-analyst",
+  "index": "countersign-events",
+  "tool_ids": [
+    "held_payments_by_reason",
+    "payments_to_accounts_not_on_file",
+    "run_summary",
+    "attack_batches"
+  ],
+  "operations": [
+    {
+      "resource": "tool",
+      "id": "held_payments_by_reason",
+      "action": "unchanged"
+    },
+    {
+      "resource": "tool",
+      "id": "payments_to_accounts_not_on_file",
+      "action": "unchanged"
+    },
+    {
+      "resource": "tool",
+      "id": "run_summary",
+      "action": "unchanged"
+    },
+    {
+      "resource": "tool",
+      "id": "attack_batches",
+      "action": "unchanged"
+    },
+    {
+      "resource": "agent",
+      "id": "countersign-audit-analyst",
+      "action": "unchanged"
+    }
+  ]
+}

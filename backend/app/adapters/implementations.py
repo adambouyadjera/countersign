@@ -154,12 +154,7 @@ class _OfflineService:
 from app.adapters.bank import LiveBankAdapter, OfflineBankAdapter
 
 
-class LiveAuditSink(_LiveService):
-    async def write_event(self, event: RunEvent) -> RunEvent:
-        raise NotImplementedError("Elastic event indexing is not implemented.")
-
-    async def ask(self, request: AuditAskRequest) -> AuditAnswer:
-        raise NotImplementedError("Elastic audit questions are not implemented.")
+from app.adapters.elastic import LiveAuditSink
 
 
 class OfflineAuditSink(_OfflineService):
