@@ -392,6 +392,8 @@ class Approval(ContractModel):
     created_at: Timestamp
     requested_by: str
     required_role: PersonRole
+    # Computed per request by ApprovalManager; omitted from recorded evidence and older payloads.
+    stale: StrictBool = OptionalField()
     resolution: ApprovalResolution = OptionalField()
 
 

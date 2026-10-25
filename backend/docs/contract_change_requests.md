@@ -229,3 +229,19 @@ Document the message for an invoice lacking a saved historical graph or agent
 transcript: `Not recorded for this run (created before graphs were persisted)`.
 Unknown runs and invoices retain their current distinct 404 messages. No
 recorded evidence is reconstructed, and no schema is removed or renamed.
+
+## Cleanup item 4 — stale approval visibility and rejection
+
+Add optional `Approval.stale?: boolean`. The server derives it from the original
+approval context and current session; callers cannot override it. Both
+pending/resolved lists and resolution responses always include the computed
+flag; it is omitted where it is not computed (older serialized fixtures and the
+recorded bank-change evidence, which stays byte-identical). A stale hold can be rejected once by an
+authorized actor, subject to the same requester/role/amount checks. Rejection
+emits `approval.resolved` into the original run and durable audit; a held bill
+has no journal entry to reverse, so rejection posts no fictitious ledger entry.
+
+Paying a stale hold still returns HTTP 409 with the existing error envelope and
+message `This hold is from an earlier server session; re-run the batch to approve.`
+Missing/mismatched original authority remains blocked. No field, role, limit,
+SoD requirement or existing valid approval path is removed.

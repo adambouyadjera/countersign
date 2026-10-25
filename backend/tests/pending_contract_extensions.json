@@ -1,5 +1,8 @@
 {
   "properties": {
+    "Approval": {
+      "stale": {"title": "Stale", "type": "boolean"}
+    },
     "Batch": {
       "item_id": {"title": "Item Id", "type": "string"},
       "document_id": {"title": "Document Id", "type": "string"},

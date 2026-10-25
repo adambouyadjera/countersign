@@ -21,8 +21,14 @@ class ApprovalManager:
         payments.authorize_approval = self.authorize_execution
 
     def list(self, status=None) -> list[Approval]:
-        approvals = [Approval.model_validate(row) for row in self.store.list_records("approvals")]
+        approvals = [self._snapshot(Approval.model_validate(row)) for row in self.store.list_records("approvals")]
         return [item for item in approvals if status is None or item.status == status]
+
+    def _snapshot(self, approval):
+        """Compute staleness from context; a stored flag never grants authority."""
+        context = self.store.get_record("approval_contexts", approval.approval_id)
+        stale = context is None or context.get("session_started_at") != self.store.session_started_at.isoformat()
+        return approval.model_copy(update={"stale": stale})
 
     @staticmethod
     def _allowed_roles(approval):
@@ -151,10 +157,13 @@ class ApprovalManager:
             if self.store.get_run(approval.run_id) is None:
                 raise HTTPException(409, "Approval run is unavailable")
             context = self.store.get_record("approval_contexts", approval_id)
-            if context is None or context.get("session_started_at") != self.store.session_started_at.isoformat():
-                raise HTTPException(409, "Approval context is unavailable or belongs to an earlier session")
+            if context is None:
+                raise HTTPException(409, "Approval context is unavailable; the original request cannot be verified")
             if any(context.get(key) != getattr(approval, key) for key in ("run_id", "invoice_id", "invoice_number")):
                 raise HTTPException(409, "Approval context does not match the requested payment")
+            approval = self._snapshot(approval)
+            if approval.stale and body.decision != "reject":
+                raise HTTPException(409, "This hold is from an earlier server session; re-run the batch to approve.")
             payment_args = None
             if body.decision != "reject":
                 vendor_id = context.get("vendor_id")
@@ -242,4 +251,4 @@ class ApprovalManager:
                             "decision": body.decision, **({"note": body.note} if body.note is not None else {})},
             })
             refresh_run_tallies(self.store, approval.run_id)
-            return approval
+            return self._snapshot(approval)

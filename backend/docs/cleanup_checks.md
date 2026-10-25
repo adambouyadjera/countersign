@@ -71,3 +71,16 @@ paths and compare full artifacts before/after restart.
 
 `.venv/bin/pytest -q tests/test_graph_diagnostics.py tests/test_autopilot.py tests/test_graph.py --tb=short`
 returned `33 passed, 2 warnings in 3.70s`.
+
+## Item 4 — stale rejection
+
+The isolated session-change check reproduced HTTP 409 for both `reject` and
+`pay_vendor_on_file`, with `Approval context is unavailable or belongs to an
+earlier session`; no transfer occurred. The unconditional session guard ran
+before the money-free rejection branch.
+
+Stale, verifiable requests now allow rejection after the existing SoD, role and
+amount authorization. Stale payment decisions retain a clear 409; missing or
+mismatched context remains blocked. Staleness is computed, not trusted from a
+stored flag. Rejection is recorded in approval/audit history without creating
+a monetary journal for a held bill that was never posted.
