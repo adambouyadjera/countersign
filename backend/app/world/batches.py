@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from app.contract_models import Batch, DocumentText, InboxItem, InvoiceSummary, SupportingDocument
+from app.contract_models import Batch, DocumentText, InvoiceSummary, SupportingDocument
 from app.store import Store
 from app.world.attacks import create_attack
 from app.world.invoices import (
@@ -44,6 +44,7 @@ def _create_invoice_batch(store: Store, *, kind: str, custom_vendor_id=None,
     now = datetime.now(timezone.utc)
     invoices = []
     records = []
+    inbox_documents = []
     batch_id = f"batch-{uuid4().hex}"
     purchase_orders = {
         po["purchase_order_id"]: po for po in world["purchase_orders"]
@@ -99,11 +100,7 @@ def _create_invoice_batch(store: Store, *, kind: str, custom_vendor_id=None,
                 "invoice_id": invoice_id, "document_id": document_id,
                 "created_at": now.isoformat(), **scoring,
             }))
-            item_id = f"inbox-{uuid4().hex}"
-            records.append(("inbox_items", item_id, InboxItem(
-                item_id=item_id, document_id=document_id, sender=vendor["email"],
-                received_at=now, status="queued",
-            )))
+            inbox_documents.append((document_id, vendor["email"]))
         records.append(("invoice_scoring", invoice_id, scoring))
         invoices.append(InvoiceSummary(
             invoice_id=invoice_id, invoice_number=invoice_number,
@@ -115,7 +112,10 @@ def _create_invoice_batch(store: Store, *, kind: str, custom_vendor_id=None,
         batch_id=batch_id, kind=kind, created_at=now, invoices=invoices,
     )
     records.append(("batches", batch_id, batch))
-    store.save_records_atomically(records)
+    with store.transaction():
+        store.save_records_atomically(records)
+        for document_id, sender in inbox_documents:
+            store.enqueue_inbox(document_id, sender, received_at=now)
     return batch
 
 

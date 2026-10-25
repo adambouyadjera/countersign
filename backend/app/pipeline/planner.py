@@ -89,12 +89,20 @@ def invalid_plan_holds(table) -> list[PlanStep]:
     }) for alias in table.invoices]
 
 
-async def propose(*, run_id, instruction, vendors, purchase_orders, table, documents, adapter, store) -> PlanProposedPayload:
+async def propose(*, run_id, instruction, vendors, purchase_orders, table, documents, adapter, store,
+                  append_transcript=False) -> PlanProposedPayload:
     guard = LeakGuardScanner(documents)
-    transcript = PlannerTranscript(run_id=run_id, calls=[], leak_guard=guard.summary)
+    previous = store.get_record("planner_transcripts", run_id) if append_transcript else None
+    transcript = (PlannerTranscript.model_validate(previous) if previous is not None else
+                  PlannerTranscript(run_id=run_id, calls=[], leak_guard=guard.summary))
+    baseline = transcript.leak_guard.model_copy(deep=True)
 
     def persist():
-        transcript.leak_guard = guard.summary
+        summary = guard.summary
+        transcript.leak_guard = summary.model_copy(update={
+            name: getattr(baseline, name) + getattr(summary, name)
+            for name in ("strings_checked", "canaries_checked", "matches")
+        })
         store.save_record("planner_transcripts", run_id, transcript)
 
     persist()

@@ -88,6 +88,8 @@ class RunManager:
         self.policy = PolicyEngine(store, amount_tolerance_cents=settings.policy_amount_tolerance_cents,
                                    autonomy_limit_cents=settings.agent_autonomy_limit_cents, today=as_of)
         self._tasks: dict[str, asyncio.Task] = {}
+        self._continuous_runs: set[str] = set()
+        self._inbox_claims: dict[str, list] = {}
         self._closed = False
 
     @property
@@ -113,13 +115,87 @@ class RunManager:
             lanes=[RunLane(lane=lane, status="running") for lane in lanes],
             unguarded_mode=request.unguarded_mode or "ap",
         )
-        self.store.save_run(run)
-        self.store.save_record("planner_transcripts", run.run_id, {
-            "run_id": run.run_id, "calls": [],
-            "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
-        })
+        document_ids = {invoice.document_id for invoice in batch.invoices}
+        with self.store.transaction():
+            prior = [item for item in self.store.list_records("inbox_items")
+                     if item["document_id"] in document_ids and item["status"] != "queued"]
+            if prior:
+                raise HTTPException(409, "An inbox document is already processing or processed; open its existing run")
+            self.store.save_run(run)
+            self.store.save_record("planner_transcripts", run.run_id, {
+                "run_id": run.run_id, "calls": [],
+                "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
+            })
+            self._inbox_claims[run.run_id] = self.store.claim_inbox(run.run_id, document_ids=document_ids)
         self._tasks[run.run_id] = asyncio.create_task(self._execute(run, batch), name=run.run_id)
         return run
+
+    def create_autopilot(self, lanes) -> Run:
+        """Allocate the stable run and aggregate inbox batch without doing work."""
+        if self._closed:
+            raise HTTPException(503, "Run manager is shutting down")
+        if not lanes or len(set(lanes)) != len(lanes) or set(lanes) - {"countersign", "unguarded"}:
+            raise HTTPException(422, "At least one distinct lane is required")
+        now = datetime.now(timezone.utc)
+        batch = Batch(batch_id=f"batch-autopilot-{uuid4().hex}", kind="standard", created_at=now, invoices=[])
+        run = Run(run_id=f"run-autopilot-{uuid4().hex}", batch_id=batch.batch_id,
+                  instruction=DEFAULT_INSTRUCTION, created_at=now,
+                  lanes=[RunLane(lane=lane, status="running") for lane in lanes], unguarded_mode="ap")
+        with self.store.transaction():
+            self.store.save_record("batches", batch.batch_id, batch)
+            self.store.save_run(run)
+            self.store.save_record("planner_transcripts", run.run_id, {
+                "run_id": run.run_id, "calls": [],
+                "leak_guard": {"strings_checked": 0, "canaries_checked": 0, "matches": 0},
+            })
+        self._continuous_runs.add(run.run_id)
+        return run
+
+    def attach_autopilot(self, run_id, batch: Batch, lanes) -> None:
+        """Expose newly admitted invoices on the same Console batch immediately."""
+        with self.store.transaction():
+            run = self.store.get_run(run_id)
+            if run is None:
+                raise HTTPException(404, "Autopilot run not found")
+            aggregate = Batch.model_validate(self.store.get_record("batches", run.batch_id))
+            invoices = {invoice.document_id: invoice for invoice in aggregate.invoices}
+            for invoice in batch.invoices:
+                if invoice.document_id in invoices and invoices[invoice.document_id] != invoice:
+                    raise ValueError("An inbox document cannot change invoice identity")
+                invoices[invoice.document_id] = invoice
+            aggregate.invoices = list(invoices.values())
+            references = {reference.document_id: reference for reference in aggregate.supporting_documents or []}
+            references.update({reference.document_id: reference for reference in batch.supporting_documents or []})
+            if references:
+                aggregate.supporting_documents = list(references.values())
+            if batch.kind == "attack" or aggregate.kind == "attack":
+                aggregate.kind = "attack"
+            elif references:
+                aggregate.kind = "bank_change"
+            statuses = {lane.lane: lane.status for lane in run.lanes}
+            statuses.update({lane: "running" for lane in lanes})
+            run.lanes = [RunLane(lane=lane, status=status) for lane, status in statuses.items()]
+            self.store.save_record("batches", aggregate.batch_id, aggregate)
+            self.store.save_run(run)
+        self._continuous_runs.add(run_id)
+
+    async def process_autopilot(self, run_id, batch: Batch, lanes) -> Run:
+        """Process one admitted slice; the service serializes slices per run."""
+        if self._closed:
+            raise HTTPException(503, "Run manager is shutting down")
+        task = self._tasks.get(run_id)
+        if task is not None and not task.done():
+            raise HTTPException(409, "Autopilot run is already processing an inbox slice")
+        run = self.store.get_run(run_id)
+        if run is None:
+            raise HTTPException(404, "Autopilot run not found")
+        self._continuous_runs.add(run_id)
+        if self.as_of is None:
+            self.policy.today = datetime.now(timezone.utc).date()
+        current = run.model_copy(update={"lanes": [RunLane(lane=lane, status="running") for lane in lanes]})
+        self._tasks[run_id] = asyncio.create_task(self._execute(current, batch), name=f"{run_id}:inbox")
+        await self._tasks[run_id]
+        return self.store.get_run(run_id)
 
     async def wait(self, run_id: str) -> Run:
         if run_id in self._tasks:
@@ -143,7 +219,8 @@ class RunManager:
                 continue
             # A task cancelled before its coroutine first executes cannot enter
             # that coroutine's finally block. Finalize that accepted run here.
-            if not self.store.list_events(run_id):
+            await self._received_inbox(run)
+            if not any(event.type == "run.started" for event in self.store.list_events(run_id)):
                 await self._started(run)
             await self._event(run_id, "error", {
                 "message": "Run interrupted before processing began (run).", "recoverable": False,
@@ -152,7 +229,28 @@ class RunManager:
                 paid_count=0, paid_cents=0, held_count=0, blocked_count=0,
                 not_on_file_count=0, not_on_file_cents=0,
             ), failed=True)
+            self._finish_inbox(run_id)
         self._tasks.clear()
+
+    async def _received_inbox(self, run):
+        claimed = self._inbox_claims.get(run.run_id, [])
+        if not claimed:
+            return
+        received = {event.payload.item.item_id for event in self.store.list_events(run.run_id)
+                    if event.type == "inbox.received"}
+        for item in claimed:
+            if item.item_id not in received:
+                await self._event(run.run_id, "inbox.received", {"item": item.model_dump(mode="python")}, lane="system")
+
+    def _finish_inbox(self, run_id):
+        claimed = {item.item_id for item in self._inbox_claims.pop(run_id, [])}
+        # Intake can happen after a manual run was accepted. Such documents
+        # join that existing attempt rather than becoming new queued work.
+        if run_id not in self._continuous_runs:
+            claimed.update(item["item_id"] for item in self.store.list_records("inbox_items")
+                           if item.get("run_id") == run_id and item["status"] == "processing")
+        for item_id in claimed:
+            self.store.finish_inbox(item_id)
 
     async def _event(self, run_id: str, event_type: str, payload: dict, *, lane="countersign", mode=None,
                      provider=None, model=None):
@@ -188,6 +286,11 @@ class RunManager:
 
     async def _finish(self, run: Run, tally=None, *, failed=False, statuses=None) -> None:
         statuses = statuses or {lane.lane: "failed" if failed else "completed" for lane in run.lanes}
+        if run.run_id in self._continuous_runs:
+            # Admission may have attached later documents/lanes while the
+            # current slice was awaiting an external service.
+            run = self.store.get_run(run.run_id) or run
+            statuses = {**{lane.lane: lane.status for lane in run.lanes}, **statuses}
         run.lanes = [RunLane(lane=lane.lane, status=statuses[lane.lane]) for lane in run.lanes]
         self.store.save_run(run)
         refreshed = refresh_run_tallies(self.store, run.run_id) if not self.dry_run else None
@@ -209,13 +312,19 @@ class RunManager:
             run.tallies = refreshed.tallies
         for lane in run.lanes:
             await self._event(run.run_id, "lane.status", {"status": lane.status}, lane=lane.lane)
-        await self._event(run.run_id, "run.completed", {"tallies": run.tallies.model_dump(mode="python")}, lane="system")
+        # An inbox slice finishing does not end its long-lived event stream.
+        # Later arrivals retain the same identity and cumulative audit trail.
+        if run.run_id not in self._continuous_runs:
+            await self._event(run.run_id, "run.completed", {"tallies": run.tallies.model_dump(mode="python")}, lane="system")
 
     async def _execute(self, run: Run, batch: Batch) -> None:
         tasks = {}
         statuses = {lane.lane: "failed" for lane in run.lanes}
         try:
-            await self._started(run)
+            await self._received_inbox(run)
+            if (run.run_id not in self._continuous_runs
+                    or not any(event.type == "run.started" for event in self.store.list_events(run.run_id))):
+                await self._started(run)
             for lane in run.lanes:
                 await self._event(run.run_id, "lane.status", {"status": "running"}, lane=lane.lane)
             for lane in run.lanes:
@@ -242,7 +351,10 @@ class RunManager:
                 "message": f"Run failed ({type(error).__name__}).", "recoverable": False,
             }, lane="system")
         finally:
-            await self._finish(run, statuses=statuses)
+            try:
+                await self._finish(run, statuses=statuses)
+            finally:
+                self._finish_inbox(run.run_id)
 
     async def _unguarded(self, run: Run, batch: Batch) -> bool:
         failed = False
@@ -339,6 +451,7 @@ class RunManager:
                     run_id=run.run_id, instruction=run.instruction, vendors=vendors,
                     purchase_orders=purchase_orders, table=table, documents=documents,
                     adapter=self.adapters.planner, store=self.store,
+                    append_transcript=run.run_id in self._continuous_runs,
                 )
                 # The program uses document aliases; the public event binds its
                 # steps back to API invoice identities for graph/event consumers.
