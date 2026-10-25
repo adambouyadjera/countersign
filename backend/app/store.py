@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from app.contract_models import AgentTranscript, EvalJob, Person, PlannerTranscript, Run, RunEvent
+from app.contract_models import AgentTranscript, Autopilot, EvalJob, InboxItem, Person, PlannerTranscript, Run, RunEvent
 
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "countersign.db"
@@ -33,6 +33,7 @@ _RECORD_TABLES = {
     "invoice_scoring": "invoice_id",
     "attack_audit": "batch_id",
     "inbox_items": "item_id",
+    "autopilot_state": "state_id",
     "documents": "document_id",
     "extractions": "extraction_id",
     "planner_transcripts": "run_id",
@@ -112,6 +113,10 @@ class Store:
                     "request_id TEXT PRIMARY KEY, requested_at REAL NOT NULL)"
                 )
                 connection.execute(
+                    "CREATE TABLE IF NOT EXISTS inbox_document_keys ("
+                    "document_id TEXT PRIMARY KEY, item_id TEXT NOT NULL UNIQUE)"
+                )
+                connection.execute(
                     "INSERT OR IGNORE INTO metadata (key, value) VALUES (?, ?)",
                     ("session_started_at", datetime.now(timezone.utc).isoformat()),
                 )
@@ -183,6 +188,13 @@ class Store:
             if job.job_id != record_id:
                 raise ValueError("record_id must match job.job_id")
             data = job.model_dump(mode="json")
+        elif table == "autopilot_state":
+            state = Autopilot.model_validate({
+                key: value for key, value in dict(record).items() if key != "state_id"
+            })
+            if record_id != "autopilot":
+                raise ValueError("Autopilot state must use its singleton storage key")
+            data = {"state_id": record_id, **state.model_dump(mode="json")}
         elif table == "agent_transcripts":
             transcript = AgentTranscript.model_validate({
                 key: value for key, value in data.items() if key != "transcript_id"
@@ -217,16 +229,125 @@ class Store:
 
     def save_records_atomically(self, records) -> None:
         """Publish one complete generated batch; a failed write leaves none."""
-        with self._lock:
-            connection = self._db()
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                for table, record_id, record in records:
-                    self.save_record(table, record_id, record)
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        with self.transaction():
+            for table, record_id, record in records:
+                self.save_record(table, record_id, record)
+
+    def get_autopilot_state(self) -> Autopilot:
+        record = self.get_record("autopilot_state", "autopilot")
+        if record is None:
+            return Autopilot(enabled=False, lanes=["countersign", "unguarded"],
+                             run_id=None, last_checked_at=None)
+        return Autopilot.model_validate({key: value for key, value in record.items() if key != "state_id"})
+
+    def save_autopilot_state(self, state: Autopilot) -> None:
+        self.save_record("autopilot_state", "autopilot", {
+            "state_id": "autopilot", **Autopilot.model_validate(state).model_dump(mode="json"),
+        })
+
+    def _inbox_identity(self, document_id: str) -> InboxItem | None:
+        """Find the durable document key, including inbox rows made before it."""
+        key = self._db().execute(
+            "SELECT item_id FROM inbox_document_keys WHERE document_id = ?", (document_id,),
+        ).fetchone()
+        if key is not None:
+            record = self.get_record("inbox_items", key["item_id"])
+            if record is None or record.get("document_id") != document_id:
+                raise ValueError("Inbox document idempotency record requires review")
+            return InboxItem.model_validate(record)
+        matches = [InboxItem.model_validate(row) for row in self.list_records("inbox_items")
+                   if row.get("document_id") == document_id]
+        if not matches:
+            return None
+        # A historical processed or pending attempt must win over a duplicate
+        # queued row; never make a prior attempt eligible for another payment.
+        rank = {"processed": 0, "processing": 1, "queued": 2}
+        item = min(matches, key=lambda candidate: (rank[candidate.status], candidate.received_at, candidate.item_id))
+        self._db().execute("INSERT INTO inbox_document_keys (document_id, item_id) VALUES (?, ?)",
+                           (document_id, item.item_id))
+        return item
+
+    def enqueue_inbox(self, document_id: str, sender: str, received_at=None) -> InboxItem:
+        """Accept one durable inbox item per document, even across workers."""
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("A nonempty inbox document ID is required")
+        if not isinstance(sender, str) or not sender.strip():
+            raise ValueError("A nonempty inbox sender is required")
+        with self.transaction():
+            existing = self._inbox_identity(document_id)
+            if existing is not None and existing.status != "queued":
+                return existing
+            # A manual run may have accepted this document before it arrived
+            # in the inbox. Bind that durable attempt rather than scheduling
+            # the same invoice again, including after an application restart.
+            attempts = []
+            for raw in self.list_records("runs"):
+                try:
+                    run = Run.model_validate(raw)
+                except (ValueError, TypeError):
+                    continue
+                if not run.lanes:
+                    continue
+                batch = self.get_record("batches", run.batch_id)
+                if batch is None or not any(invoice.get("document_id") == document_id
+                                             for invoice in batch.get("invoices", [])
+                                             if isinstance(invoice, Mapping)):
+                    continue
+                processing = any(lane.status == "running" for lane in run.lanes)
+                attempts.append((processing, run.created_at, run.run_id))
+            prior = min(attempts) if attempts else None
+            if existing is not None:
+                if prior is not None:
+                    existing = existing.model_copy(update={
+                        "status": "processing" if prior[0] else "processed", "run_id": prior[2],
+                    })
+                    self.save_record("inbox_items", existing.item_id, existing)
+                return existing
+            item = InboxItem(item_id="inbox-" + hashlib.sha256(document_id.encode()).hexdigest(),
+                             document_id=document_id, sender=sender,
+                             received_at=received_at or datetime.now(timezone.utc),
+                             status=("processing" if prior[0] else "processed") if prior else "queued",
+                             **({"run_id": prior[2]} if prior else {}))
+            self.save_record("inbox_items", item.item_id, item)
+            self._db().execute("INSERT INTO inbox_document_keys (document_id, item_id) VALUES (?, ?)",
+                               (document_id, item.item_id))
+            return item
+
+    def claim_inbox(self, run_id: str, document_ids=None) -> list[InboxItem]:
+        """Permanently admit queued documents once before any external work."""
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("Inbox claims require their actual run ID")
+        if isinstance(document_ids, str):
+            raise ValueError("Inbox document selection must be a collection of document IDs")
+        selected = set(document_ids) if document_ids is not None else None
+        if selected is not None and any(not isinstance(value, str) or not value.strip() for value in selected):
+            raise ValueError("Inbox document selection requires nonempty document IDs")
+        with self.transaction():
+            queued = sorted((InboxItem.model_validate(row) for row in self.list_records("inbox_items")
+                             if row.get("status") == "queued"
+                             and (selected is None or row.get("document_id") in selected)),
+                            key=lambda item: (item.received_at, item.item_id))
+            result = []
+            for item in queued:
+                canonical = self._inbox_identity(item.document_id)
+                if canonical.item_id != item.item_id or canonical.status != "queued":
+                    continue
+                claimed = item.model_copy(update={"status": "processing", "run_id": run_id})
+                self.save_record("inbox_items", claimed.item_id, claimed)
+                result.append(claimed)
+            return result
+
+    def finish_inbox(self, item_id: str) -> InboxItem | None:
+        """A terminal processing attempt is never automatically made queued."""
+        with self.transaction():
+            raw = self.get_record("inbox_items", item_id)
+            if raw is None:
+                return None
+            item = InboxItem.model_validate(raw)
+            if item.status == "processing":
+                item = item.model_copy(update={"status": "processed"})
+                self.save_record("inbox_items", item.item_id, item)
+            return item
 
     def reserve_attack_batch(self, request_id: str, requested_at: float) -> int:
         """Shared rolling-window limit; return Retry-After seconds or zero.
@@ -569,7 +690,8 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 for table in ("events", "decisions", "approvals", "approval_contexts", "approval_attempts",
-                              "session_payment_claims", "graphs", "planner_transcripts", "agent_transcripts", "runs"):
+                              "session_payment_claims", "graphs", "planner_transcripts", "agent_transcripts", "runs",
+                              "inbox_items", "inbox_document_keys", "autopilot_state"):
                     connection.execute(f"DELETE FROM {table}")
                 connection.execute(
                     "UPDATE metadata SET value = ? WHERE key = ?",
